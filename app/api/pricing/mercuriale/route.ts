@@ -229,7 +229,9 @@ async function handleParse(req: NextRequest) {
       console.error('[mercuriale] Timeout Claude API (25s)');
       return NextResponse.json({ error: 'Timeout — le fichier est trop volumineux. Réessayez avec un fichier plus petit.' }, { status: 504 });
     }
+    const errObj = err as Record<string, unknown>;
     console.error('[mercuriale] Erreur générale:', err);
+    console.error('[mercuriale] Error details:', { message: errObj?.message, status: errObj?.status, response: errObj?.response, data: (errObj?.response as Record<string, unknown>)?.data });
     return NextResponse.json({ error: 'Erreur lors de l\'analyse' }, { status: 500 });
   }
 }
