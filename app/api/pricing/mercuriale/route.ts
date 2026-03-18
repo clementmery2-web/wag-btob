@@ -141,8 +141,8 @@ async function handleParse(req: NextRequest) {
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      console.log('[mercuriale] Claude API error:', { status: claudeRes.status, body: errText });
-      return NextResponse.json({ error: `Erreur Claude API: ${claudeRes.status}` }, { status: 500 });
+      console.log('[mercuriale] Gemini API error:', { status: geminiRes.status, body: errText });
+      return NextResponse.json({ error: `Erreur Gemini API: ${geminiRes.status}` }, { status: 500 });
     }
 
     const geminiData = await geminiRes.json();
