@@ -338,7 +338,7 @@ export async function GET(req: NextRequest) {
     nom: produit.nom,
     marque: produit.marque,
     categorie: produit.categorie,
-    prix_achat_ht: produit.prix_achat_ht ?? produit.prix_vente_wag_ht ?? 0,
+    prix_achat_ht: produit.prix_achat_wag_ht ?? produit.prix_vente_wag_ht ?? 0,
     contenance: produit.contenance,
     pmc_ht: produit.pmc_reference,
     pmc_fiabilite: produit.pmc_fiabilite,
