@@ -12,10 +12,13 @@ export interface Produit {
   etat: 'intact' | 'declasse' | 'etiquette_abimee' | 'emballage_abime';
   photo_url: string | null;
   categorie: string;
-  prix_achat_ht: number;
+  prix_achat_wag_ht: number;
   pmc_ht: number | null;
-  pmc_type: PmcType;
-  pmc_sources: PmcSource[];
+  pmc_reference: number | null;
+  pmc_ttc_gd: number | null;
+  tva_taux: number;
+  pmc_type?: PmcType;
+  pmc_sources?: PmcSource[];
   pmc_fiabilite: number; // 1-5
   prix_vente_wag_ht: number | null;
   marge_wag_pct: number | null;

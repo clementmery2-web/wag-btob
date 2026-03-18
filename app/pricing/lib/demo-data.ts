@@ -10,10 +10,11 @@ function dAgo(daysAgo: number): string {
   return d(-daysAgo);
 }
 
-function buildProduit(partial: Partial<Produit> & { nom: string; marque: string; ean: string; prix_achat_ht: number; pmc_ht: number }): Produit {
-  const scenario = calculerScenario(partial.prix_achat_ht, partial.pmc_ht);
+function buildProduit(partial: Partial<Produit> & { nom: string; marque: string; ean: string; prix_achat_wag_ht?: number; prix_achat_ht?: number; pmc_ht: number }): Produit {
+  const prixAchat = partial.prix_achat_wag_ht ?? partial.prix_achat_ht ?? 0;
+  const scenario = calculerScenario(prixAchat, partial.pmc_ht);
   const flux = partial.flux ?? 'entrepot';
-  const prixVente = calculerPrixVenteWag(partial.prix_achat_ht, flux);
+  const prixVente = calculerPrixVenteWag(prixAchat, flux);
 
   // Build PMC sources with type
   const defaultSources: PmcSource[] = [
@@ -38,13 +39,16 @@ function buildProduit(partial: Partial<Produit> & { nom: string; marque: string;
     etat: partial.etat ?? 'intact',
     photo_url: null,
     categorie: partial.categorie ?? 'Épicerie',
-    prix_achat_ht: partial.prix_achat_ht,
+    prix_achat_wag_ht: prixAchat,
     pmc_ht: partial.pmc_ht,
+    pmc_reference: partial.pmc_ht,
+    pmc_ttc_gd: null,
+    tva_taux: 5.5,
     pmc_type: pmcType,
     pmc_sources: sources,
     pmc_fiabilite: fiabilite,
     prix_vente_wag_ht: prixVente,
-    marge_wag_pct: calculerMargeWag(partial.prix_achat_ht, prixVente),
+    marge_wag_pct: calculerMargeWag(prixAchat, prixVente),
     remise_vs_gd_pct: calculerRemiseVsGd(prixVente, partial.pmc_ht),
     scenario,
     statut: partial.statut ?? 'a_traiter',
@@ -120,7 +124,7 @@ produitsGerble.forEach(p => p.offre_id = 'o3');
 
 function buildOffre(id: string, fournisseur: string, daysAgo: number, produits: Produit[], statut: Offre['statut']): Offre {
   const ddmMin = produits.reduce((min, p) => p.ddm < min ? p.ddm : min, produits[0].ddm);
-  const valeur = produits.reduce((sum, p) => sum + p.prix_achat_ht * p.stock_disponible, 0);
+  const valeur = produits.reduce((sum, p) => sum + p.prix_achat_wag_ht * p.stock_disponible, 0);
   const dateReception = dAgo(daysAgo);
   const score = calculerScoreUrgence({ ddm_min: ddmMin, valeur_estimee: valeur, date_reception: dateReception });
   return {
@@ -171,7 +175,7 @@ export function getDemoKPIs(): { offres_a_traiter: number; produits_en_ligne: nu
   const aTraiter = DEMO_OFFRES.filter(o => o.statut === 'nouvelle' || o.statut === 'en_cours').length;
   const enLigne = tousLesProduits.filter(p => p.statut === 'valide').length;
   const ca = tousLesProduits.reduce((s, p) => s + (p.prix_vente_wag_ht ?? 0) * p.stock_disponible, 0);
-  const engagement = tousLesProduits.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
+  const engagement = tousLesProduits.reduce((s, p) => s + p.prix_achat_wag_ht * p.stock_disponible, 0);
   const marges = tousLesProduits.filter(p => p.marge_wag_pct !== null).map(p => p.marge_wag_pct!);
   const margeMoy = marges.length ? marges.reduce((a, b) => a + b, 0) / marges.length : 0;
   return {

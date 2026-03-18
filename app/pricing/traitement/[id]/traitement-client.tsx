@@ -1,17 +1,15 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { DEMO_OFFRES } from '../../lib/demo-data';
-import { calculerScenario, calculerMargeWag, calculerRemiseVsGd, calculerPrixVenteWag, joursRestantsDdm, formatEur, formatPct, PMC_TYPE_CONFIG, getRemiseLabel } from '../../lib/types';
-import type { Produit, PmcType, PmcSource } from '../../lib/types';
+import { calculerMargeWag, calculerRemiseVsGd, joursRestantsDdm, formatEur, formatPct } from '../../lib/types';
+import type { Produit } from '../../lib/types';
 
-const PMC_SOURCES_LIST = ['Carrefour', 'Leclerc', 'Auchan', 'Intermarché', 'Lidl', 'Pharmacie', 'Site marque'] as const;
-
-const SCENARIO_CONFIG = {
-  A: { label: 'JACKPOT', emoji: '🟢', cls: 'bg-green-100 text-green-800 border-green-300', desc: 'Prix achat < 20% PMC HT' },
-  B: { label: 'NORMAL', emoji: '🟡', cls: 'bg-yellow-100 text-yellow-800 border-yellow-300', desc: 'Prix achat 20-43% PMC HT' },
-  C: { label: 'CONTRE-OFFRE', emoji: '🟠', cls: 'bg-orange-100 text-orange-800 border-orange-300', desc: 'Prix achat 43-50% PMC HT' },
-  D: { label: 'REFUS', emoji: '🔴', cls: 'bg-red-100 text-red-800 border-red-300', desc: 'Prix achat > 50% PMC HT' },
+const SCENARIO_CONFIG: Record<string, { label: string; emoji: string; cls: string; desc: string }> = {
+  A: { label: 'JACKPOT', emoji: '🟢', cls: 'bg-green-100 text-green-700 border-green-300', desc: 'Prix achat < 20% ref' },
+  B: { label: 'NORMAL', emoji: '🟡', cls: 'bg-yellow-100 text-yellow-700 border-yellow-300', desc: 'Prix achat 20-43% ref' },
+  C: { label: 'CONTRE-OFFRE', emoji: '🟠', cls: 'bg-orange-100 text-orange-700 border-orange-300', desc: 'Prix achat 43-50% ref' },
+  D: { label: 'REFUS', emoji: '🔴', cls: 'bg-red-100 text-red-700 border-red-300', desc: 'Prix achat > 50% ref' },
 };
 
 const ETAT_LABELS: Record<string, string> = {
@@ -21,7 +19,6 @@ const ETAT_LABELS: Record<string, string> = {
   emballage_abime: 'Emballage abîmé',
 };
 
-// Extended Produit type for API data (may have extra fields)
 interface ProduitExt extends Produit {
   pmc_statut?: string;
   fournisseur_nom?: string;
@@ -35,15 +32,8 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showRules, setShowRules] = useState(false);
   const [sliderValue, setSliderValue] = useState<number | null>(null);
-  // PMC manual entry
-  const [pmcManuelTTC, setPmcManuelTTC] = useState('');
-  const [pmcManuelSource, setPmcManuelSource] = useState<string>('Carrefour');
-  const [pmcSaving, setPmcSaving] = useState(false);
-  const [pmcRefreshing, setPmcRefreshing] = useState(false);
-  const [pmcLiveData, setPmcLiveData] = useState<Record<string, {
-    pmc_ht: number; pmc_type: PmcType; pmc_fiabilite: number; pmc_statut: string;
-    pmc_sources: { enseigne: string; prix: number; type: string }[]; alertes: string[];
-  }>>({});
+  const [sliderModifiedManually, setSliderModifiedManually] = useState(false);
+  const [pmcTtcSaisi, setPmcTtcSaisi] = useState<Record<string, number>>({});
 
   // Fetch products from API
   useEffect(() => {
@@ -56,7 +46,6 @@ export function TraitementClient({ offreId }: { offreId: string }) {
           setFournisseurNom(data.produits[0].fournisseur_nom ?? '');
           setSource(data.source ?? 'supabase');
         } else {
-          // Fallback to demo
           const demoOffre = DEMO_OFFRES.find(o => o.id === offreId);
           if (demoOffre) {
             setProduits(demoOffre.produits);
@@ -79,57 +68,90 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   const current = produits[currentIndex];
   const treated = produits.filter(p => p.statut !== 'a_traiter').length;
 
-  const refreshPmc = useCallback(async (produitId: string) => {
-    setPmcRefreshing(true);
-    try {
-      const res = await fetch(`/api/pricing/pmc?id=${produitId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPmcLiveData(prev => ({ ...prev, [produitId]: data }));
-      }
-    } catch { /* ignore */ }
-    setPmcRefreshing(false);
-  }, []);
+  // CORRECTION 6 — Calcul cascade
+  const pmcTtc = pmcTtcSaisi[current?.id ?? ''] ?? (current?.pmc_ttc_gd || 0);
+  const tva = current?.tva_taux || 5.5;
+  const pmcHtCalcule = useMemo(() => {
+    return pmcTtc > 0 ? pmcTtc / (1 + tva / 100) : null;
+  }, [pmcTtc, tva]);
 
-  const validateManualPmc = useCallback(async (produitId: string) => {
-    const val = parseFloat(pmcManuelTTC);
-    if (isNaN(val) || val <= 0) return;
-    setPmcSaving(true);
-    try {
-      const res = await fetch('/api/pricing/pmc', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ produit_id: produitId, pmc_ttc: val, source: pmcManuelSource }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPmcLiveData(prev => ({
-          ...prev,
-          [produitId]: {
-            pmc_ht: data.pmc_ht,
-            pmc_type: 'gd',
-            pmc_fiabilite: 5,
-            pmc_statut: 'valide_manuellement',
-            pmc_sources: [{ enseigne: pmcManuelSource, prix: val, type: 'gd' }],
-            alertes: [],
-          },
-        }));
-        setPmcManuelTTC('');
-      }
-    } catch { /* ignore */ }
-    setPmcSaving(false);
-  }, [pmcManuelTTC, pmcManuelSource]);
+  const dluo_jours = current?.ddm
+    ? Math.floor((new Date(current.ddm).getTime() - Date.now()) / 86400000)
+    : null;
 
-  // Keyboard shortcuts
+  const kDlouCalcule = useMemo(() => {
+    if (current?.flux === 'dropshipping') return 0.48;
+    if (dluo_jours === null) return 0.48;
+    if (dluo_jours > 90) return 0.48;
+    if (dluo_jours > 30) return 0.40;
+    if (dluo_jours > 15) return 0.32;
+    return 0.25;
+  }, [current?.flux, dluo_jours]);
+
+  const coeffFlux = current?.flux === 'entrepot' ? 1.20 : current?.flux === 'transit' ? 1.25 : 1.15;
+  const prixMin = (current?.prix_achat_wag_ht || 0) * coeffFlux;
+
+  const scenarioCalcule = useMemo(() => {
+    if (!pmcHtCalcule || pmcHtCalcule === 0) return null;
+    if (!current?.prix_achat_wag_ht || current.prix_achat_wag_ht === 0) return null;
+    const ref = pmcHtCalcule * kDlouCalcule;
+    if (ref === 0) return null;
+    const ratio = current.prix_achat_wag_ht / ref;
+    if (ratio < 0.20) return { code: 'A', prixVente: pmcHtCalcule * 0.40 };
+    if (ratio < 0.43) return { code: 'B', prixVente: pmcHtCalcule * 0.48 };
+    if (ratio < 0.50) return { code: 'C', prixVente: (pmcHtCalcule * 0.48) / 1.15 };
+    return { code: 'D', prixVente: null };
+  }, [pmcHtCalcule, current?.prix_achat_wag_ht, kDlouCalcule]);
+
+  const prixVenteFinal = scenarioCalcule?.prixVente
+    ? Math.max(scenarioCalcule.prixVente, prixMin)
+    : null;
+
+  // Auto-set slider when prixVenteFinal changes and slider not manually modified
+  useEffect(() => {
+    if (prixVenteFinal !== null && !sliderModifiedManually) {
+      setSliderValue(prixVenteFinal);
+    }
+  }, [prixVenteFinal, sliderModifiedManually]);
+
+  const prixVente = sliderValue ?? prixVenteFinal ?? current?.prix_vente_wag_ht ?? 0;
+  const margeWag = current ? calculerMargeWag(current.prix_achat_wag_ht, prixVente) : 0;
+  const remiseGd = pmcHtCalcule && pmcHtCalcule > 0 ? calculerRemiseVsGd(prixVente, pmcHtCalcule) : 0;
+  const joursDdm = current ? joursRestantsDdm(current.ddm) : 0;
+  const sc = scenarioCalcule ? SCENARIO_CONFIG[scenarioCalcule.code] : null;
+
+  // CORRECTION 3 — handleAction with PATCH
   const handleAction = useCallback((action: Produit['statut']) => {
     if (!current) return;
     setProduits(prev => prev.map((p, i) => i === currentIndex ? { ...p, statut: action } : p));
+
+    fetch(`/api/pricing/produits/${current.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        statut: action,
+        prix_vente_wag_ht: sliderValue || prixVenteFinal || null,
+        pmc_ttc_gd: pmcTtcSaisi[current.id] || null,
+        pmc_ht: pmcHtCalcule || null,
+        pmc_statut: pmcTtcSaisi[current.id] ? 'valide' : 'manuel_requis',
+        k_dluo: kDlouCalcule,
+        scenario: scenarioCalcule?.code || null,
+      }),
+    }).catch(err => console.error('[traitement] PATCH failed:', err));
+
     setSliderValue(null);
+    setSliderModifiedManually(false);
     if (currentIndex < produits.length - 1) {
       setCurrentIndex(prev => prev + 1);
     }
-  }, [current, currentIndex, produits.length]);
+  }, [current, currentIndex, produits.length, sliderValue, prixVenteFinal, pmcTtcSaisi, pmcHtCalcule, kDlouCalcule, scenarioCalcule]);
 
+  // Reset slider manual flag on index change
+  useEffect(() => {
+    setSliderModifiedManually(false);
+  }, [currentIndex]);
+
+  // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
@@ -179,28 +201,6 @@ export function TraitementClient({ offreId }: { offreId: string }) {
     );
   }
 
-  // Use live PMC data if available, else fall back to product data
-  const liveData = pmcLiveData[current.id];
-  const pmcHt = liveData?.pmc_ht ?? current.pmc_ht ?? 0;
-  const pmcType: PmcType = liveData?.pmc_type ?? current.pmc_type ?? 'gd';
-  const pmcTypeConfig = PMC_TYPE_CONFIG[pmcType];
-  const pmcStatut = liveData?.pmc_statut ?? (current as ProduitExt).pmc_statut ?? (current.pmc_type === 'estime' ? 'estime' : 'auto_trouve');
-  const liveSources: PmcSource[] = (liveData?.pmc_sources ?? []).map(s => ({ enseigne: s.enseigne, prix: s.prix, type: s.type as PmcType }));
-  const liveAlertes = liveData?.alertes ?? [];
-  const prixVente = sliderValue ?? current.prix_vente_wag_ht ?? calculerPrixVenteWag(current.prix_achat_ht, current.flux);
-  const scenario = pmcHt > 0 ? calculerScenario(current.prix_achat_ht, pmcHt) : null;
-  const margeWag = calculerMargeWag(current.prix_achat_ht, prixVente);
-  const remiseGd = pmcHt > 0 ? calculerRemiseVsGd(prixVente, pmcHt) : 0;
-  const joursDdm = joursRestantsDdm(current.ddm);
-  const sc = scenario ? SCENARIO_CONFIG[scenario] : null;
-  const remiseLabel = getRemiseLabel(pmcType, remiseGd);
-
-  // Alertes
-  const alertes: string[] = [...liveAlertes];
-  if (remiseGd > 75) alertes.push('PMC potentiellement faux (remise > 75%)');
-  if (joursDdm < 30) alertes.push('DDM très courte — vérifier pricing');
-  if (pmcType === 'estime' && !liveAlertes.some(a => a.includes('estimé'))) alertes.push('PMC estimé — vérifier manuellement avant validation');
-
   const prixReventeTTC = Math.round(prixVente * 1.055 * 1.3 * 100) / 100;
   const margeRetailEstimee = 30;
 
@@ -231,12 +231,6 @@ export function TraitementClient({ offreId }: { offreId: string }) {
             className="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 px-3 py-1.5 rounded-md"
           >
             Règles auto
-          </button>
-          <button
-            onClick={() => window.open('/pricing/pmc/recherche', '_blank')}
-            className="text-xs text-gray-900 hover:text-indigo-700 border border-gray-300 px-3 py-1.5 rounded-md font-medium"
-          >
-            Recherche PMC →
           </button>
           <Link
             href={`/pricing/validation/${offreId}`}
@@ -303,74 +297,38 @@ export function TraitementClient({ offreId }: { offreId: string }) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-medium text-gray-400 uppercase mb-1">Prix achat WAG HT</p>
-                <p className="text-2xl font-bold text-gray-900">{formatEur(current.prix_achat_ht)}</p>
+                {current.prix_achat_wag_ht > 0 ? (
+                  <p className="text-2xl font-bold text-gray-900">{formatEur(current.prix_achat_wag_ht)}</p>
+                ) : (
+                  <p className="text-sm text-orange-500">Prix d&apos;achat manquant</p>
+                )}
               </div>
-              <div className={`rounded-lg p-3 -m-1 ${
-                pmcStatut === 'estime' ? 'bg-orange-50' :
-                pmcType === 'pharma_bio' ? 'bg-blue-50' : pmcTypeConfig.bgClass
-              }`}>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className={`text-xs font-medium uppercase ${pmcTypeConfig.textClass === 'text-gray-900' ? 'text-gray-400' : pmcTypeConfig.textClass} opacity-80`}>
-                    {pmcStatut === 'estime' ? 'PMC ESTIMÉ' : pmcType === 'pharma_bio' ? 'PMC PHARMA/BIO' : pmcTypeConfig.label}
-                  </p>
-                  {pmcType !== 'gd' && (
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                      pmcType === 'pharma_bio' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {pmcType === 'pharma_bio' ? 'PHARMA/BIO' : 'ESTIMÉ'}
-                    </span>
-                  )}
-                  {pmcStatut === 'valide_manuellement' && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">VALIDÉ MANUELLEMENT</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <p className={`text-2xl font-bold ${pmcTypeConfig.textClass}`}>{pmcHt ? formatEur(pmcHt) : '—'}</p>
-                  {(liveData?.pmc_fiabilite ?? current.pmc_fiabilite) > 0 && (
-                    <span className="text-xs text-amber-500" title={`Fiabilité ${liveData?.pmc_fiabilite ?? current.pmc_fiabilite}/5`}>
-                      {'⭐'.repeat(liveData?.pmc_fiabilite ?? current.pmc_fiabilite)}
-                    </span>
-                  )}
-                </div>
 
-                {/* Sources détaillées */}
-                {(liveSources.length > 0 || current.pmc_sources.length > 0) && (
-                  <div className="mt-2 space-y-0.5">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Sources :</p>
-                    {(liveSources.length > 0 ? liveSources : current.pmc_sources).map((s, i) => (
-                      <p key={i} className="text-xs text-gray-500">
-                        <span className="text-green-500">✅</span> {s.enseigne} : {formatEur(s.prix)} TTC
-                      </p>
-                    ))}
-                  </div>
+              {/* CORRECTION 5 — Champ PMC TTC */}
+              <div>
+                <label className="text-xs font-medium text-gray-400 uppercase block mb-1">PMC TTC Grande Distribution (€)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="3.49"
+                  value={pmcTtcSaisi[current.id] ?? (current.pmc_ttc_gd || '')}
+                  onChange={e => setPmcTtcSaisi(prev => ({ ...prev, [current.id]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                />
+                {pmcTtc > 0 && pmcHtCalcule !== null && (
+                  <p className="text-xs text-gray-500 mt-1">PMC HT : {pmcHtCalcule.toFixed(2)} €</p>
                 )}
-
-                {/* Live alertes */}
-                {liveAlertes.length > 0 && (
-                  <div className="mt-2 space-y-0.5">
-                    {liveAlertes.map((a, i) => (
-                      <p key={i} className="text-[11px] text-amber-600">⚠️ {a}</p>
-                    ))}
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => refreshPmc(current.id)}
-                    disabled={pmcRefreshing}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
-                  >
-                    {pmcRefreshing ? '⏳ Recherche...' : '🔄 Rafraîchir'}
-                  </button>
-                </div>
               </div>
             </div>
 
-            {/* Scénario */}
-            {sc && (
+            {/* CORRECTION 7 — Scénario */}
+            {pmcTtc === 0 && (
+              <p className="text-sm text-gray-400">Saisir le PMC TTC pour calculer le scénario</p>
+            )}
+            {sc && scenarioCalcule && (
               <div className={`rounded-lg border px-4 py-2.5 ${sc.cls}`}>
-                <span className="font-bold text-sm">{sc.emoji} Scénario {scenario} — {sc.label}</span>
+                <span className="font-bold text-sm">{sc.emoji} Scénario {scenarioCalcule.code} — {sc.label}</span>
                 <span className="text-xs ml-2 opacity-70">({sc.desc})</span>
               </div>
             )}
@@ -383,11 +341,14 @@ export function TraitementClient({ offreId }: { offreId: string }) {
               </div>
               <input
                 type="range"
-                min={current.prix_achat_ht}
-                max={pmcHt || current.prix_achat_ht * 3}
+                min={current.prix_achat_wag_ht}
+                max={pmcHtCalcule || current.prix_achat_wag_ht * 3 || 10}
                 step={0.01}
                 value={prixVente}
-                onChange={e => setSliderValue(parseFloat(e.target.value))}
+                onChange={e => {
+                  setSliderValue(parseFloat(e.target.value));
+                  setSliderModifiedManually(true);
+                }}
                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
             </div>
@@ -401,77 +362,10 @@ export function TraitementClient({ offreId }: { offreId: string }) {
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-400">
-                  Remise vs {pmcType === 'gd' ? 'GD' : pmcType === 'pharma_bio' ? 'Pharma/Bio' : 'estimé'}
-                </p>
+                <p className="text-xs text-gray-400">Remise vs GD</p>
                 <p className="text-xl font-bold text-indigo-600">-{formatPct(remiseGd)}</p>
               </div>
             </div>
-
-            {/* Alertes */}
-            {alertes.length > 0 && (
-              <div className="space-y-1">
-                {alertes.map((a, i) => (
-                  <p key={i} className="text-xs text-amber-600 flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    {a}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Bloc saisie manuelle PMC */}
-            {(pmcStatut === 'manuel_requis' || pmcStatut === 'estime' || pmcType === 'estime') && (
-              <div className="border-2 border-orange-300 bg-orange-50 rounded-lg p-4 space-y-3">
-                <div className="flex items-start gap-2">
-                  <span className="text-lg">⚠️</span>
-                  <div>
-                    <p className="text-sm font-bold text-orange-800">PMC non trouvé automatiquement</p>
-                    <p className="text-xs text-orange-600 mt-1">
-                      Recherchez : &quot;{current.nom} {current.marque}&quot; sur Carrefour.fr ou Google
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 block mb-1">PMC TTC trouvé</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="3.49"
-                        value={pmcManuelTTC}
-                        onChange={e => setPmcManuelTTC(e.target.value)}
-                        className="w-32 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-                      />
-                      <span className="text-sm text-gray-500">€</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 block mb-1">Source</label>
-                    <select
-                      value={pmcManuelSource}
-                      onChange={e => setPmcManuelSource(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-                    >
-                      {PMC_SOURCES_LIST.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={() => validateManualPmc(current.id)}
-                    disabled={pmcSaving || !pmcManuelTTC || parseFloat(pmcManuelTTC) <= 0}
-                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold py-2 rounded-lg transition-colors"
-                  >
-                    {pmcSaving ? '⏳ Enregistrement...' : '✅ Valider le PMC'}
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Preview card acheteur */}
             <div className="border border-dashed border-gray-300 rounded-lg p-3">
@@ -484,7 +378,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
                 <div className="text-right">
                   <p className="text-sm font-bold text-indigo-600">{formatEur(prixVente)} HT</p>
                   <p className="text-xs text-gray-500">Revente TTC : ~{formatEur(prixReventeTTC)}</p>
-                  <p className="text-xs text-green-600">{remiseLabel} • Marge retail ~{margeRetailEstimee}%</p>
+                  <p className="text-xs text-green-600">-{formatPct(remiseGd)} vs GD • Marge retail ~{margeRetailEstimee}%</p>
                 </div>
               </div>
             </div>

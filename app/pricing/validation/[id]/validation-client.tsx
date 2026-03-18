@@ -9,7 +9,7 @@ interface ProduitData {
   nom: string;
   marque: string;
   contenance: string;
-  prix_achat_ht: number;
+  prix_achat_wag_ht: number;
   prix_vente_wag_ht: number | null;
   stock_disponible: number;
   statut: string;
@@ -72,9 +72,9 @@ export function ValidationClient({ offreId }: { offreId: string }) {
   const refuses = produits.filter(p => p.statut === 'refuse');
   const passes = produits.filter(p => p.statut === 'passe' || p.statut === 'a_traiter');
 
-  const valeurAchat = produits.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
+  const valeurAchat = produits.reduce((s, p) => s + p.prix_achat_wag_ht * p.stock_disponible, 0);
   const caPotentiel = valides.reduce((s, p) => s + (p.prix_vente_wag_ht ?? 0) * p.stock_disponible, 0);
-  const margeEstimee = caPotentiel - valides.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
+  const margeEstimee = caPotentiel - valides.reduce((s, p) => s + p.prix_achat_wag_ht * p.stock_disponible, 0);
   const margePct = caPotentiel > 0 ? (margeEstimee / caPotentiel) * 100 : 0;
 
   if (confirmed) {

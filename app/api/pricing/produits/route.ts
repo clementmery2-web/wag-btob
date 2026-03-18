@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import { verifySession } from '@/app/pricing/lib/auth';
 import { DEMO_OFFRES } from '@/app/pricing/lib/demo-data';
 import { calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd, getRemiseLabel } from '@/app/pricing/lib/types';
-import type { PmcType, PmcSource } from '@/app/pricing/lib/types';
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,23 +17,18 @@ function getSupabase() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapToBackofficeProduit(row: any) {
   const prixAchat = parseFloat(row.prix_achat_wag_ht) || 0;
-  const pmcHt = parseFloat(row.pmc_reference) || null;
+  const pmcReference = parseFloat(row.pmc_reference) || null;
+  const pmcHt = parseFloat(row.pmc_ht) || null;
+  const pmcTtcGd = parseFloat(row.pmc_ttc_gd) || null;
+  const tvaTaux = parseFloat(row.tva_taux) || 5.5;
   const flux = row.flux || 'entrepot';
-  const pmcType: PmcType = row.pmc_type || 'gd';
   const pmcFiabilite = parseInt(row.pmc_fiabilite) || 0;
 
   const prixVente = parseFloat(row.prix_vente_wag_ht) || (prixAchat > 0 ? calculerPrixVenteWag(prixAchat, flux) : 0);
-  const scenario = pmcHt && pmcHt > 0 && prixAchat > 0 ? calculerScenario(prixAchat, pmcHt) : null;
+  const effectivePmc = pmcHt ?? pmcReference;
+  const scenario = effectivePmc && effectivePmc > 0 && prixAchat > 0 ? calculerScenario(prixAchat, effectivePmc) : null;
   const margeWag = prixVente > 0 ? calculerMargeWag(prixAchat, prixVente) : null;
-  const remiseGd = pmcHt && pmcHt > 0 ? calculerRemiseVsGd(prixVente, pmcHt) : 0;
-
-  // Build PMC sources from Supabase JSON field or empty array
-  let pmcSources: PmcSource[] = [];
-  if (row.pmc_sources) {
-    try {
-      pmcSources = typeof row.pmc_sources === 'string' ? JSON.parse(row.pmc_sources) : row.pmc_sources;
-    } catch { /* ignore */ }
-  }
+  const remiseGd = effectivePmc && effectivePmc > 0 ? calculerRemiseVsGd(prixVente, effectivePmc) : 0;
 
   return {
     id: row.id,
@@ -49,16 +43,17 @@ function mapToBackofficeProduit(row: any) {
     etat: row.etat ?? 'intact',
     photo_url: row.photo_url ?? null,
     categorie: row.categorie ?? '',
-    prix_achat_ht: prixAchat,
+    prix_achat_wag_ht: prixAchat,
     pmc_ht: pmcHt,
-    pmc_type: pmcType,
-    pmc_sources: pmcSources,
+    pmc_reference: pmcReference,
+    pmc_ttc_gd: pmcTtcGd,
+    tva_taux: tvaTaux,
     pmc_fiabilite: pmcFiabilite,
     pmc_statut: row.pmc_statut ?? 'non_trouve',
     prix_vente_wag_ht: prixVente,
     marge_wag_pct: margeWag,
     remise_vs_gd_pct: remiseGd,
-    remise_label: pmcHt ? getRemiseLabel(pmcType, remiseGd) : '',
+    remise_label: effectivePmc ? getRemiseLabel('gd', remiseGd) : '',
     scenario,
     statut: row.statut ?? 'a_traiter',
     note_interne: row.note_interne ?? '',
@@ -119,9 +114,9 @@ export async function GET(req: NextRequest) {
 
   const enriched = produits.map(p => {
     const pmcHt = p.pmc_ht ?? 0;
-    const scenario = pmcHt > 0 ? calculerScenario(p.prix_achat_ht, pmcHt) : null;
-    const prixVente = p.prix_vente_wag_ht ?? calculerPrixVenteWag(p.prix_achat_ht, p.flux);
-    const margeWag = calculerMargeWag(p.prix_achat_ht, prixVente);
+    const scenario = pmcHt > 0 ? calculerScenario(p.prix_achat_wag_ht, pmcHt) : null;
+    const prixVente = p.prix_vente_wag_ht ?? calculerPrixVenteWag(p.prix_achat_wag_ht, p.flux);
+    const margeWag = calculerMargeWag(p.prix_achat_wag_ht, prixVente);
     const remiseGd = pmcHt > 0 ? calculerRemiseVsGd(prixVente, pmcHt) : 0;
     return {
       ...p,
@@ -129,7 +124,7 @@ export async function GET(req: NextRequest) {
       prix_vente_wag_ht: prixVente,
       marge_wag_pct: margeWag,
       remise_vs_gd_pct: remiseGd,
-      remise_label: getRemiseLabel(p.pmc_type, remiseGd),
+      remise_label: getRemiseLabel('gd', remiseGd),
     };
   });
 
