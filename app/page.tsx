@@ -4,9 +4,6 @@ import Link from 'next/link';
 import type { CatalogueProduit } from './lib/catalogue-data';
 
 const SEUIL_COMMANDE = 500;
-const PALIER_PRIORITAIRE = 1500;
-const PALIER_REMISE = 2500;
-const REMISE_FIDELITE = 0.03;
 const PRODUCTS_PER_PAGE = 12;
 
 // ─── 7 filtres métier ──────────────────────────────────────
@@ -180,7 +177,6 @@ export default function CataloguePage() {
   const [panier, setPanier] = useState<Record<string, number>>({});
   const [panierOpen, setPanierOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [telephone, setTelephone] = useState('');
   const [note, setNote] = useState('');
   const [commandeEnvoyee, setCommandeEnvoyee] = useState(false);
   const [commandeNumero, setCommandeNumero] = useState('');
@@ -232,13 +228,9 @@ export default function CataloguePage() {
 
   const totalArticles = panierItems.length;
   const totalHT = panierItems.reduce((s, i) => s + i.total, 0);
-  const remiseAppliquee = totalHT >= PALIER_REMISE;
-  const montantRemise = remiseAppliquee ? totalHT * REMISE_FIDELITE : 0;
-  const totalFinal = totalHT - montantRemise;
   const seuilAtteint = totalHT >= SEUIL_COMMANDE;
-  const prioritaireAtteint = totalHT >= PALIER_PRIORITAIRE;
 
-  // TVA estimée (moyenne pondérée des TVA du panier)
+  // TVA estimée (par produit, taux mixtes)
   const tvaEstimee = useMemo(() => {
     if (panierItems.length === 0) return 0;
     return panierItems.reduce((s, item) => {
@@ -246,7 +238,6 @@ export default function CataloguePage() {
       return s + item.total * (tva / 100);
     }, 0);
   }, [panierItems]);
-  const tvaFinal = remiseAppliquee ? tvaEstimee * (1 - REMISE_FIDELITE) : tvaEstimee;
 
   function addToPanier(p: CatalogueProduit) {
     setPanier(prev => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + 1 }));
@@ -265,10 +256,9 @@ export default function CataloguePage() {
     setCommandeLoading(true);
     setCommandeError('');
     try {
-      const remisePct = remiseAppliquee ? REMISE_FIDELITE * 100 : 0;
       const payload = {
         email,
-        telephone,
+        telephone: '',
         note,
         produits: panierItems.map(item => ({
           produit_id: item.id,
@@ -281,8 +271,8 @@ export default function CataloguePage() {
           total_ligne_ht: item.total,
         })),
         total_ht: totalHT,
-        remise_pct: remisePct,
-        total_apres_remise_ht: totalFinal,
+        remise_pct: 0,
+        total_apres_remise_ht: totalHT,
       };
       console.log('[commande] Envoi payload:', payload);
       const res = await fetch('/api/commande', {
@@ -312,61 +302,51 @@ export default function CataloguePage() {
     grilleRef.current?.scrollIntoView({ behavior: 'smooth' });
   }
 
-  // Progress bar percentage (max at PALIER_REMISE)
-  const progressPct = Math.min(100, (totalHT / PALIER_REMISE) * 100);
-  const pct500 = (SEUIL_COMMANDE / PALIER_REMISE) * 100;
-  const pct1500 = (PALIER_PRIORITAIRE / PALIER_REMISE) * 100;
+  // Progress bar percentage (simple 0→500€)
+  const progressPct = Math.min(100, (totalHT / SEUIL_COMMANDE) * 100);
 
   // ─── Quantity Selector Component ──────────────────────────────
   function QuantitySelector({ productId, pcb, prixUnit }: { productId: string; pcb: number; prixUnit: number }) {
     const qty = panier[productId] ?? 0;
     const totalLigne = qty * pcb * prixUnit;
-    const [inputVal, setInputVal] = useState(String(qty));
-    const isUnit = pcb === 1;
-
-    // Sync input when external qty changes
-    useEffect(() => { setInputVal(String(qty)); }, [qty]);
-
-    function handleBlur() {
-      const parsed = parseInt(inputVal, 10);
-      if (!parsed || parsed < 1) {
-        updateCartons(productId, 0);
-      } else {
-        updateCartons(productId, parsed);
-      }
-    }
+    const nbUvc = qty * pcb;
 
     return (
       <div>
-        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
+        <div className="flex items-center justify-center gap-2">
           <button
             onClick={() => updateCartons(productId, qty - 1)}
-            className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors"
+            className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-bold text-sm hover:bg-gray-50 transition-colors"
           >
             &minus;
           </button>
-          <div className="text-center flex-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={inputVal}
-              onChange={e => setInputVal(e.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={handleBlur}
-              onKeyDown={e => { if (e.key === 'Enter') handleBlur(); }}
-              className="w-16 text-center font-bold text-lg border-none bg-transparent focus:outline-none"
-            />
-            <span className="text-xs text-gray-500 block -mt-1">
-              {isUnit ? `unité${qty > 1 ? 's' : ''}` : `carton${qty > 1 ? 's' : ''}`}
-            </span>
-          </div>
+          <input
+            type="number"
+            min={1}
+            value={qty}
+            onChange={e => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val) && val >= 1) updateCartons(productId, val);
+            }}
+            onBlur={e => {
+              const val = parseInt(e.target.value, 10);
+              if (isNaN(val) || val < 1) updateCartons(productId, 1);
+            }}
+            onFocus={e => e.target.select()}
+            className="w-20 text-center font-bold text-lg border border-gray-300 rounded-lg py-2 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200"
+          />
           <button
             onClick={() => updateCartons(productId, qty + 1)}
-            className="bg-green-600 hover:bg-green-700 text-white rounded px-3 py-1 font-bold text-sm transition-colors"
+            className="bg-green-600 text-white rounded-lg px-3 py-2 font-bold text-sm hover:bg-green-700 transition-colors"
           >
             +
           </button>
+          <span className="text-sm text-gray-600 font-medium">carton{qty > 1 ? 's' : ''}</span>
         </div>
-        <div className="text-center text-green-700 font-bold text-lg mt-1">
+        {pcb > 1 && (
+          <p className="text-xs text-gray-400 text-center mt-1">({nbUvc} UVC)</p>
+        )}
+        <div className="text-center text-green-700 font-bold text-xl mt-1">
           {formatEur(totalLigne)} HT
         </div>
       </div>
@@ -571,11 +551,11 @@ export default function CataloguePage() {
                         </p>
                       )}
 
-                      {/* Prix carton / unité */}
+                      {/* Prix carton / pièce */}
                       <p className="text-sm text-gray-500 text-center mb-3">
-                        {pcb > 1
-                          ? `Carton de ${pcb} — ${formatEur(prixUnit * pcb)} HT / carton`
-                          : `Vendu à l'unité — ${formatEur(prixUnit)} HT / unité`
+                        {pcb >= 2
+                          ? `📦 Carton de ${pcb} UVC — ${formatEur(prixUnit * pcb)} HT`
+                          : `📦 Vendu à la pièce — ${formatEur(prixUnit)} HT`
                         }
                       </p>
 
@@ -646,7 +626,6 @@ export default function CataloguePage() {
                 const nomNorm = normalizeName(item.nom);
                 const marqueNorm = normalizeName(item.marque);
                 const pcb = num(item.pcb) || 1;
-                const isUnit = pcb === 1;
 
                 return (
                   <div key={item.id} className="bg-gray-50 rounded-lg p-3">
@@ -660,7 +639,7 @@ export default function CataloguePage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-900 truncate">{nomNorm}</p>
+                        <p className="text-sm font-bold text-gray-900 line-clamp-2">{nomNorm}</p>
                         <p className="text-xs text-gray-500">{marqueNorm}</p>
                       </div>
                       <button
@@ -679,131 +658,83 @@ export default function CataloguePage() {
                         >
                           &minus;
                         </button>
-                        <span className="text-sm font-semibold px-2 min-w-[50px] text-center">
-                          {item.nbCartons}
-                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.nbCartons}
+                          onChange={e => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val >= 1) updateCartons(item.id, val);
+                          }}
+                          onBlur={e => {
+                            const val = parseInt(e.target.value, 10);
+                            if (isNaN(val) || val < 1) updateCartons(item.id, 1);
+                          }}
+                          onFocus={e => e.target.select()}
+                          className="w-14 text-center font-bold text-sm border border-gray-300 rounded py-1 focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-200"
+                        />
                         <button
                           onClick={() => updateCartons(item.id, item.nbCartons + 1)}
                           className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100"
                         >
                           +
                         </button>
-                        <span className="text-xs text-gray-500 ml-1">
-                          {isUnit ? `unité${item.nbCartons > 1 ? 's' : ''}` : `carton${item.nbCartons > 1 ? 's' : ''}`}
-                        </span>
+                        <span className="text-xs text-gray-500 ml-1">carton{item.nbCartons > 1 ? 's' : ''}</span>
                       </div>
                       <span className="text-sm font-bold text-green-700">{formatEur(item.total)} HT</span>
                     </div>
+                    {pcb > 1 && (
+                      <p className="text-xs text-gray-400 mt-1">({item.nbUnites} UVC)</p>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* Résumé + 3 paliers + formulaire */}
-            <div className="border-t border-gray-200 p-4 space-y-3">
-              {/* Récap totaux */}
+            {/* Récap fixe en bas */}
+            <div className="border-t bg-white p-4 space-y-3 shrink-0">
+              {/* Totaux */}
               <div className="space-y-1">
                 <div className="flex justify-between text-sm text-gray-700">
                   <span>Sous-total HT</span>
                   <span className="font-semibold">{formatEur(totalHT)}</span>
                 </div>
-                {remiseAppliquee && (
-                  <div className="flex justify-between text-sm text-green-700">
-                    <span className="font-medium">Remise -3%</span>
-                    <span className="font-semibold">-{formatEur(montantRemise)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-200 pt-1">
-                  <span>Total HT</span>
-                  <span>{formatEur(totalFinal)}</span>
-                </div>
                 {totalHT > 0 && (
                   <>
                     <div className="flex justify-between text-xs text-gray-400">
                       <span>TVA estimée</span>
-                      <span>{formatEur(tvaFinal)}</span>
+                      <span>{formatEur(tvaEstimee)}</span>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-500 font-medium">
+                    <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-200 pt-1">
                       <span>Total TTC</span>
-                      <span>{formatEur(totalFinal + tvaFinal)}</span>
+                      <span>{formatEur(totalHT + tvaEstimee)}</span>
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Barre de progression 3 paliers */}
+              {/* Barre de progression simple 0→500€ */}
               {totalHT > 0 && (
-                <div className="space-y-2">
-                  <div className="relative w-full h-3 bg-gray-200 rounded-full">
+                <div className="space-y-1">
+                  <div className="w-full h-2.5 bg-gray-200 rounded-full">
                     <div
-                      className="h-full rounded-full transition-all duration-300 bg-green-600"
+                      className={`h-full rounded-full transition-all duration-300 ${seuilAtteint ? 'bg-green-600' : 'bg-red-500'}`}
                       style={{ width: `${progressPct}%` }}
                     />
-                    {/* Markers — cercles sur la barre */}
-                    {[
-                      { pct: pct500, reached: seuilAtteint },
-                      { pct: pct1500, reached: prioritaireAtteint },
-                      { pct: 100, reached: remiseAppliquee },
-                    ].map((m, i) => (
-                      <div
-                        key={i}
-                        className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 flex items-center justify-center text-[8px] font-bold ${
-                          m.reached
-                            ? 'bg-green-600 border-green-700 text-white'
-                            : 'bg-white border-gray-300 text-gray-400'
-                        }`}
-                        style={{ left: `${m.pct}%`, transform: 'translate(-50%, -50%)' }}
-                      >
-                        {m.reached ? '✓' : ''}
-                      </div>
-                    ))}
                   </div>
-
-                  {/* Palier labels */}
-                  <div className="flex justify-between text-[10px]">
-                    <span className={seuilAtteint ? 'text-green-600 font-medium' : 'text-gray-400'}>500 €</span>
-                    <span className={prioritaireAtteint ? 'text-green-600 font-medium' : 'text-gray-400'}>1 500 €</span>
-                    <span className={remiseAppliquee ? 'text-green-600 font-medium' : 'text-gray-400'}>2 500 €</span>
-                  </div>
-
-                  {/* Palier messages */}
-                  {!seuilAtteint && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      <p className="text-xs text-red-700">
-                        Il manque <strong>{formatEur(SEUIL_COMMANDE - totalHT)}</strong> HT pour valider votre commande
-                      </p>
-                    </div>
-                  )}
-                  {seuilAtteint && !prioritaireAtteint && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 space-y-1">
-                      <p className="text-xs text-green-700 font-medium">&#10003; Commande validée !</p>
-                      <p className="text-xs text-gray-600">
-                        Ajoutez <strong>{formatEur(PALIER_PRIORITAIRE - totalHT)}</strong> HT pour débloquer la livraison prioritaire sous 3 jours
-                      </p>
-                    </div>
-                  )}
-                  {prioritaireAtteint && !remiseAppliquee && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 space-y-1">
-                      <p className="text-xs text-blue-700 font-medium">&#x1F680; Livraison prioritaire débloquée !</p>
-                      <p className="text-xs text-gray-600">
-                        Plus que <strong>{formatEur(PALIER_REMISE - totalHT)}</strong> HT pour obtenir -3% sur toute la commande
-                      </p>
-                    </div>
-                  )}
-                  {remiseAppliquee && (
-                    <div className="bg-green-100 border border-green-300 rounded-lg px-3 py-2 space-y-1 animate-pulse">
-                      <p className="text-xs text-green-800 font-bold">
-                        &#x1F3AF; Remise -3% appliquée ! Vous économisez {formatEur(montantRemise)} HT sur cette commande
-                      </p>
-                      <p className="text-xs text-blue-700 font-medium">&#x1F680; Livraison prioritaire sous 3j</p>
-                    </div>
+                  {!seuilAtteint ? (
+                    <p className="text-xs text-red-600 font-medium">
+                      Il manque <strong>{formatEur(SEUIL_COMMANDE - totalHT)}</strong> HT pour valider la commande
+                    </p>
+                  ) : (
+                    <p className="text-xs text-green-700 font-medium">&#x2705; Commande minimum atteinte !</p>
                   )}
                 </div>
               )}
 
               {/* Formulaire commande — visible dès 500€ */}
               {seuilAtteint && !commandeEnvoyee && (
-                <form onSubmit={handleCommande} className="space-y-3 pt-2">
+                <form onSubmit={handleCommande} className="space-y-3">
                   <input
                     type="email"
                     required
@@ -812,30 +743,22 @@ export default function CataloguePage() {
                     onChange={e => setEmail(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
                   />
-                  <input
-                    type="tel"
-                    placeholder="Téléphone (optionnel)"
-                    value={telephone}
-                    onChange={e => setTelephone(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
-                  />
                   <textarea
-                    placeholder="Note optionnelle"
+                    placeholder="Précisions sur votre commande (optionnel)"
                     rows={2}
                     value={note}
                     onChange={e => setNote(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none resize-none"
                   />
-                  {/* Récap commande épuré */}
+                  {/* Récap commande */}
                   <div className="bg-gray-50 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
                     {panierItems.map(item => {
                       const pcb = num(item.pcb) || 1;
-                      const isUnit = pcb === 1;
                       return (
                         <div key={item.id} className="flex justify-between text-xs text-gray-700">
                           <span className="truncate flex-1 mr-2">
-                            {normalizeName(item.nom)} — {item.nbCartons} {isUnit ? `unité${item.nbCartons > 1 ? 's' : ''}` : `carton${item.nbCartons > 1 ? 's' : ''}`}
-                            {pcb > 1 && <span className="text-gray-400"> ({item.nbUnites} unités)</span>}
+                            {normalizeName(item.nom)} &times; {item.nbCartons} carton{item.nbCartons > 1 ? 's' : ''}
+                            {pcb > 1 && <span className="text-gray-400"> ({item.nbUnites} UVC)</span>}
                           </span>
                           <span className="font-medium whitespace-nowrap">{formatEur(item.total)} HT</span>
                         </div>
@@ -843,7 +766,7 @@ export default function CataloguePage() {
                     })}
                     <div className="flex justify-between text-xs font-bold text-gray-900 border-t border-gray-200 pt-1 mt-1">
                       <span>Total HT</span>
-                      <span>{formatEur(totalFinal)}</span>
+                      <span>{formatEur(totalHT)}</span>
                     </div>
                   </div>
                   {commandeError && (
@@ -864,9 +787,19 @@ export default function CataloguePage() {
                     )}
                   </button>
                   <p className="text-xs text-gray-400 text-center leading-relaxed">
-                    Confirmation sous 2h &bull; Paiement à 30 jours disponible pour les clients récurrents
+                    Confirmation sous 2h &bull; Paiement à réception
                   </p>
                 </form>
+              )}
+
+              {/* Bouton grisé si < 500€ */}
+              {!seuilAtteint && totalArticles > 0 && !commandeEnvoyee && (
+                <button
+                  disabled
+                  className="w-full bg-gray-300 text-gray-500 font-bold py-4 rounded-lg text-lg cursor-not-allowed"
+                >
+                  Envoyer ma commande &rarr;
+                </button>
               )}
 
               {commandeEnvoyee && (
@@ -876,12 +809,6 @@ export default function CataloguePage() {
                     Nous vous recontactons sous 2h à l&apos;adresse <strong>{email}</strong>.
                   </p>
                 </div>
-              )}
-
-              {!seuilAtteint && totalArticles > 0 && (
-                <p className="text-xs text-gray-400 text-center">
-                  Ajoutez {formatEur(SEUIL_COMMANDE - totalHT)} HT pour pouvoir commander.
-                </p>
               )}
             </div>
           </div>
