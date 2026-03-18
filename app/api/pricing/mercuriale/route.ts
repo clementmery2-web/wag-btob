@@ -25,7 +25,29 @@ interface ProduitParse {
   poids: number | null;
 }
 
-const MAX_CHARS = 3000;
+const MAX_CHARS = 2000;
+
+// Map Excel column headers to known fields via keyword matching
+const COLUMN_PATTERNS: Record<string, RegExp> = {
+  ref: /r[ée]f|code.?art|sku|reference/i,
+  nom: /nom|d[ée]sign|libell[ée]|produit|article/i,
+  marque: /marque|brand|fabricant/i,
+  ean: /ean|gtin|code.?bar/i,
+  prix: /prix|pa\.?ht|tarif|achat|cost|p\.?u/i,
+  pcb: /pcb|colis|colisage|lot|uvs/i,
+  stock: /stock|qt[ée]|quantit[ée]|dispo/i,
+  ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
+  poids: /poids|kg|gramm|weight|net/i,
+};
+
+function matchColumns(headers: string[]): Record<string, number> {
+  const mapping: Record<string, number> = {};
+  for (const [field, pattern] of Object.entries(COLUMN_PATTERNS)) {
+    const idx = headers.findIndex(h => pattern.test(h));
+    if (idx !== -1) mapping[field] = idx;
+  }
+  return mapping;
+}
 
 /**
  * POST /api/pricing/mercuriale
@@ -63,43 +85,51 @@ async function handleParse(req: NextRequest) {
   console.log('[mercuriale] Fichier reçu:', file.name, file.size, 'bytes');
   const isLargeFile = file.size > 2 * 1024 * 1024; // > 2MB
 
-  // 1. Parse Excel → CSV text (léger, pas de binaire vers Gemini)
+  // 1. Parse Excel → extract only useful columns as minimal JSON
   const buffer = await file.arrayBuffer();
-  let csvText: string;
+  let compactJson: string;
   let totalRows = 0;
   let colonnes: string[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allExtracted: Record<string, unknown>[] = [];
 
-    const allSheets: { feuille: string; csv: string; nbRows: number }[] = [];
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-      totalRows += Math.max(0, rows.length - 1); // exclude header
-      const sample = rows.slice(0, 51); // header + 50 lignes max
-      const sheetCsv = sample
-        .map((r: unknown[]) => r.map(c => String(c ?? '').replace(/,/g, ';')).join(','))
-        .join('\n');
-      allSheets.push({ feuille: sheetName, csv: sheetCsv, nbRows: rows.length });
+      if (rows.length < 2) continue;
 
-      // Extract column names from first sheet header
-      if (colonnes.length === 0 && rows.length > 0) {
-        colonnes = (rows[0] as unknown[]).map(c => String(c ?? ''));
+      const headers = (rows[0] as unknown[]).map(c => String(c ?? '').trim());
+      if (colonnes.length === 0) colonnes = headers;
+
+      const colMap = matchColumns(headers);
+      console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', colMap);
+
+      const dataRows = rows.slice(1, 51); // max 50 data rows per sheet
+      totalRows += Math.max(0, rows.length - 1);
+
+      for (const row of dataRows) {
+        const entry: Record<string, unknown> = {};
+        if (colMap.ref !== undefined) entry.ref = String(row[colMap.ref] ?? '');
+        if (colMap.nom !== undefined) entry.nom = String(row[colMap.nom] ?? '');
+        if (colMap.marque !== undefined) entry.marque = String(row[colMap.marque] ?? '');
+        if (colMap.ean !== undefined) entry.ean = String(row[colMap.ean] ?? '');
+        if (colMap.prix !== undefined) entry.prix = Number(row[colMap.prix]) || 0;
+        if (colMap.pcb !== undefined) entry.pcb = Number(row[colMap.pcb]) || 1;
+        if (colMap.stock !== undefined) entry.stock = Number(row[colMap.stock]) || 0;
+        if (colMap.ddm !== undefined) entry.ddm = String(row[colMap.ddm] ?? '') || null;
+        if (colMap.poids !== undefined) entry.poids = Number(row[colMap.poids]) || null;
+        // Skip empty rows (no name and no price)
+        if (!entry.nom && !entry.prix) continue;
+        allExtracted.push(entry);
       }
     }
 
-    console.log('[mercuriale] Feuilles:', allSheets.map(s => `${s.feuille}(${s.nbRows} lignes)`).join(', '));
-
-    // Merge sheets into one CSV text for Gemini
-    if (allSheets.length === 1) {
-      csvText = allSheets[0].csv;
-    } else {
-      csvText = allSheets.map(s => `=== Feuille: ${s.feuille} ===\n${s.csv}`).join('\n\n');
-    }
-
-    console.log('[mercuriale] CSV text:', csvText.length, 'chars pour Gemini');
+    compactJson = JSON.stringify(allExtracted);
+    console.log('[mercuriale] JSON compact:', compactJson.length, 'chars,', allExtracted.length, 'lignes extraites pour Gemini');
   } catch (err) {
     console.error('[mercuriale] Erreur parsing Excel:', err);
     return NextResponse.json({ error: 'Impossible de lire le fichier Excel' }, { status: 400 });
@@ -109,7 +139,7 @@ async function handleParse(req: NextRequest) {
     return NextResponse.json({ error: 'Fichier vide' }, { status: 400 });
   }
 
-  // 2. Send CSV text to Gemini API (pas de binaire)
+  // 2. Send pre-processed JSON to Gemini API
   const apiKey = process.env.GEMINI_API_KEY;
   console.log('[mercuriale] API Key present:', !!apiKey, 'length:', apiKey?.length);
   if (!apiKey) {
@@ -118,8 +148,8 @@ async function handleParse(req: NextRequest) {
   }
 
   try {
-    const textToSend = csvText.slice(0, MAX_CHARS);
-    console.log('[mercuriale] Envoi à Gemini API:', textToSend.length, 'chars (tronqué de', csvText.length, '),', totalRows, 'lignes totales');
+    const textToSend = compactJson.slice(0, MAX_CHARS);
+    console.log('[mercuriale] Envoi à Gemini API:', textToSend.length, 'chars (tronqué de', compactJson.length, '),', totalRows, 'lignes totales');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 9000); // 9s max
@@ -128,11 +158,11 @@ async function handleParse(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        
+
       },
       signal: controller.signal,
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Analyse ce fichier mercuriale fournisseur.\nExtrais tous les produits en JSON.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nDDM format : YYYY-MM-DD ou null\nTVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
+        contents: [{ parts: [{ text: `Voici des produits extraits d'une mercuriale fournisseur (JSON pré-traité).\nComplète et normalise chaque produit.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nRègles :\n- DDM format : YYYY-MM-DD ou null\n- TVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n- prix_achat_ht = champ "prix" des données\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
         }] }]
       }),
     });
