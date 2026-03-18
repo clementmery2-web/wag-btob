@@ -18,11 +18,11 @@ interface PhotoResult {
   photo_source: string | null;
 }
 
-/** Search Open Food Facts for a product image by EAN */
+/** Search Open Food Facts for a product image by EAN — 3s timeout */
 async function searchOpenFoodFacts(ean: string): Promise<string | null> {
   try {
     const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${ean}.json`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -33,11 +33,11 @@ async function searchOpenFoodFacts(ean: string): Promise<string | null> {
   return null;
 }
 
-/** Search Open Beauty Facts for a product image by EAN */
+/** Search Open Beauty Facts for a product image by EAN — 3s timeout */
 async function searchOpenBeautyFacts(ean: string): Promise<string | null> {
   try {
     const res = await fetch(`https://world.openbeautyfacts.org/api/v0/product/${ean}.json`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -48,11 +48,11 @@ async function searchOpenBeautyFacts(ean: string): Promise<string | null> {
   return null;
 }
 
-/** Search Open Products Facts for a product image by EAN */
+/** Search Open Products Facts for a product image by EAN — 3s timeout */
 async function searchOpenProductsFacts(ean: string): Promise<string | null> {
   try {
     const res = await fetch(`https://world.openproductsfacts.org/api/v0/product/${ean}.json`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
  * POST /api/pricing/photos
  * Actions:
  * - { action: 'search', product_id } → search photo for one product
- * - { action: 'search_all' } → search photos for all visible products without validated photo
+ * - { action: 'search_batch', product_ids: string[] } → search photos for a small batch (max 5)
  * - { action: 'validate', product_id } → mark photo as validated
  * - { action: 'reject', product_id } → reject photo, try next source or fallback
  * - { action: 'upload', product_id, photo_url } → set manually uploaded photo
@@ -196,29 +196,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ...result });
   }
 
-  if (action === 'search_all') {
-    // Search for all visible products that don't have a validated photo
+  if (action === 'search_batch') {
+    const productIds: string[] = body.product_ids;
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return NextResponse.json({ error: 'product_ids requis' }, { status: 400 });
+    }
+
+    // Cap batch size to 5
+    const ids = productIds.slice(0, 5);
+
     const { data: products, error: fetchError } = await supabase
       .from('produits')
-      .select('id, ean, categorie, photo_statut')
-      .eq('visible_catalogue', true)
-      .in('photo_statut', ['non_trouvee', ''])
-      .not('ean', 'is', null);
+      .select('id, ean, categorie')
+      .in('id', ids);
 
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
 
-    let found = 0;
-    let notFound = 0;
+    const results: Record<string, PhotoResult & { id: string }> = {};
 
     for (const product of products ?? []) {
-      if (!product.ean) { notFound++; continue; }
+      if (!product.ean) {
+        results[product.id] = { id: product.id, photo_url: null, photo_statut: 'non_trouvee', photo_source: null };
+        continue;
+      }
       const result = await findPhoto(product.ean, product.categorie ?? '');
       await supabase.from('produits').update(result).eq('id', product.id);
-      if (result.photo_statut === 'auto_trouvee') found++;
-      else notFound++;
+      results[product.id] = { id: product.id, ...result };
     }
 
-    return NextResponse.json({ ok: true, searched: (products ?? []).length, found, notFound });
+    return NextResponse.json({ ok: true, results });
   }
 
   return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
