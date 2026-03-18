@@ -33,6 +33,7 @@ export interface CatalogueProduit {
   stock_disponible: number;
   pmc_type: 'gd' | 'pharma_bio' | 'estime';
   tva_taux: number;                // TVA applicable (5.5 alimentaire, 20 non-alimentaire)
+  prix_revente_conseille_ttc: number | null; // prix de revente suggéré TTC (si dispo en base)
 }
 
 /** Emoji fallback par catégorie quand pas de photo */
@@ -139,6 +140,7 @@ function demoProd(base: {
     stock_disponible: base.stock_disponible,
     pmc_type: base.pmc_type,
     tva_taux: tvaPourCategorie(base.categorie),
+    prix_revente_conseille_ttc: null,
   };
 }
 

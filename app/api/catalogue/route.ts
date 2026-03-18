@@ -133,6 +133,7 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
     stock_disponible: stockDispo,
     pmc_type: row.pmc_type ?? 'gd',
     tva_taux: parseFloat(row.tva_taux) || tvaPourCategorie(row.categorie ?? ''),
+    prix_revente_conseille_ttc: parseFloat(row.prix_revente_conseille_ttc) || null,
   };
 }
 
