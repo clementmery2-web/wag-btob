@@ -187,7 +187,7 @@ async function handleParse(req: NextRequest) {
   }
 
   // 2. Filter valid products and build response
-  const validProduits = cleanProduits.filter(p => p.nom && p.prix_achat_ht > 0);
+  const validProduits = cleanProduits.filter(p => p.nom && p.nom.length > 2);
 
   const alertes: string[] = [];
   if (validProduits.every(p => !p.ean)) alertes.push('Aucun code EAN détecté');
