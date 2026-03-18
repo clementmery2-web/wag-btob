@@ -75,7 +75,6 @@ export function NouvelleOffreClient() {
       setNbTotal(data.nb_total || 0);
       // Auto-fill fournisseur info from Claude detection
       if (data.fournisseur_nom) setFournisseur(data.fournisseur_nom);
-      if (data.fournisseur_email) setEmailFournisseur(data.fournisseur_email);
       setEtape('preview');
     } catch {
       setErreur('Erreur réseau. Veuillez réessayer.');

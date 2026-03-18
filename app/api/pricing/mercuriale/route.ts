@@ -168,14 +168,12 @@ async function handleParse(req: NextRequest) {
     colonnes,
     alertes,
     fournisseur_nom: fournisseurNomDetecte,
-    fournisseur_email: null,
   });
 }
 
 async function handleImport(body: {
   action: string;
   fournisseur_nom: string;
-  fournisseur_email: string;
   flux: string;
   produits: ProduitParse[];
 }) {
@@ -184,7 +182,7 @@ async function handleImport(body: {
     return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
   }
 
-  const { fournisseur_nom, fournisseur_email, flux, produits } = body;
+  const { fournisseur_nom, flux, produits } = body;
   if (!produits || produits.length === 0) {
     return NextResponse.json({ error: 'Aucun produit à importer' }, { status: 400 });
   }
@@ -215,7 +213,6 @@ async function handleImport(body: {
       qmc: p.pcb,
       pcb: p.pcb,
       fournisseur_nom,
-      fournisseur_email: fournisseur_email || null,
       visible_catalogue: false,
       statut: 'a_traiter',
       photo_statut: 'non_trouvee',
