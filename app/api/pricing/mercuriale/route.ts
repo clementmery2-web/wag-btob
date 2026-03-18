@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
-// Vercel Pro: extend timeout to 30s (default is 10s)
-export const maxDuration = 30;
-
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -25,8 +22,6 @@ interface ProduitParse {
   poids: number | null;
 }
 
-const MAX_CHARS = 2000;
-
 // Map Excel column headers to known fields via keyword matching
 const COLUMN_PATTERNS: Record<string, RegExp> = {
   ref: /r[ée]f|code.?art|sku|reference/i,
@@ -38,6 +33,7 @@ const COLUMN_PATTERNS: Record<string, RegExp> = {
   stock: /stock|qt[ée]|quantit[ée]|dispo/i,
   ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
   poids: /poids|kg|gramm|weight|net/i,
+  tva: /tva|taxe/i,
 };
 
 function matchColumns(headers: string[]): Record<string, number> {
@@ -51,7 +47,7 @@ function matchColumns(headers: string[]): Record<string, number> {
 
 /**
  * POST /api/pricing/mercuriale
- * action=parse  → Parse Excel + Gemini API → return products
+ * action=parse  → Parse Excel via XLSX + column matching → return products
  * action=import → Insert parsed products into Supabase
  */
 export async function POST(req: NextRequest) {
@@ -85,16 +81,15 @@ async function handleParse(req: NextRequest) {
   console.log('[mercuriale] Fichier reçu:', file.name, file.size, 'bytes');
   const isLargeFile = file.size > 2 * 1024 * 1024; // > 2MB
 
-  // 1. Parse Excel → extract only useful columns as minimal JSON
+  // 1. Parse Excel → extract columns via pattern matching
   const buffer = await file.arrayBuffer();
-  let compactJson: string;
   let totalRows = 0;
   let colonnes: string[] = [];
+  const cleanProduits: ProduitParse[] = [];
+  let fournisseurNomDetecte: string | null = null;
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allExtracted: Record<string, unknown>[] = [];
 
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
@@ -108,28 +103,39 @@ async function handleParse(req: NextRequest) {
       const colMap = matchColumns(headers);
       console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', colMap);
 
-      const dataRows = rows.slice(1, 51); // max 50 data rows per sheet
-      totalRows += Math.max(0, rows.length - 1);
+      // Try to detect supplier name from sheet name or first cell area
+      if (!fournisseurNomDetecte && sheetName && !/sheet|feuil/i.test(sheetName)) {
+        fournisseurNomDetecte = sheetName;
+      }
 
-      for (const row of dataRows) {
-        const entry: Record<string, unknown> = {};
-        if (colMap.ref !== undefined) entry.ref = String(row[colMap.ref] ?? '');
-        if (colMap.nom !== undefined) entry.nom = String(row[colMap.nom] ?? '');
-        if (colMap.marque !== undefined) entry.marque = String(row[colMap.marque] ?? '');
-        if (colMap.ean !== undefined) entry.ean = String(row[colMap.ean] ?? '');
-        if (colMap.prix !== undefined) entry.prix = Number(row[colMap.prix]) || 0;
-        if (colMap.pcb !== undefined) entry.pcb = Number(row[colMap.pcb]) || 1;
-        if (colMap.stock !== undefined) entry.stock = Number(row[colMap.stock]) || 0;
-        if (colMap.ddm !== undefined) entry.ddm = String(row[colMap.ddm] ?? '') || null;
-        if (colMap.poids !== undefined) entry.poids = Number(row[colMap.poids]) || null;
-        // Skip empty rows (no name and no price)
-        if (!entry.nom && !entry.prix) continue;
-        allExtracted.push(entry);
+      totalRows += Math.max(0, rows.length - 1);
+      const dataRows = rows.slice(1);
+
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        const nom = colMap.nom !== undefined ? String(row[colMap.nom] ?? '').trim() : '';
+        const prix = colMap.prix !== undefined ? Number(row[colMap.prix]) || 0 : 0;
+
+        // Skip empty rows
+        if (!nom && !prix) continue;
+
+        const tvaRaw = colMap.tva !== undefined ? Number(row[colMap.tva]) : NaN;
+        const ddmRaw = colMap.ddm !== undefined ? String(row[colMap.ddm] ?? '').trim() : '';
+
+        cleanProduits.push({
+          ref: colMap.ref !== undefined ? String(row[colMap.ref] ?? '').trim() || `REF-${cleanProduits.length + 1}` : `REF-${cleanProduits.length + 1}`,
+          nom,
+          marque: colMap.marque !== undefined ? String(row[colMap.marque] ?? '').trim() : '',
+          ean: colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '',
+          prix_achat_ht: Math.max(0, prix),
+          pcb: colMap.pcb !== undefined ? Math.max(1, Math.round(Number(row[colMap.pcb]) || 1)) : 1,
+          stock: colMap.stock !== undefined ? Math.max(0, Math.round(Number(row[colMap.stock]) || 0)) : 0,
+          ddm: ddmRaw || null,
+          tva: [5.5, 20].includes(tvaRaw) ? tvaRaw : 5.5,
+          poids: colMap.poids !== undefined ? Number(row[colMap.poids]) || null : null,
+        });
       }
     }
-
-    compactJson = JSON.stringify(allExtracted);
-    console.log('[mercuriale] JSON compact:', compactJson.length, 'chars,', allExtracted.length, 'lignes extraites pour Gemini');
   } catch (err) {
     console.error('[mercuriale] Erreur parsing Excel:', err);
     return NextResponse.json({ error: 'Impossible de lire le fichier Excel' }, { status: 400 });
@@ -139,126 +145,31 @@ async function handleParse(req: NextRequest) {
     return NextResponse.json({ error: 'Fichier vide' }, { status: 400 });
   }
 
-  // 2. Send pre-processed JSON to Gemini API
-  const apiKey = process.env.GEMINI_API_KEY;
-  console.log('[mercuriale] API Key present:', !!apiKey, 'length:', apiKey?.length);
-  if (!apiKey) {
-    console.error('[mercuriale] GEMINI_API_KEY manquante');
-    return NextResponse.json({ error: 'Clé API Gemini non configurée' }, { status: 500 });
+  // 2. Filter valid products and build response
+  const validProduits = cleanProduits.filter(p => p.nom && p.prix_achat_ht > 0);
+
+  const alertes: string[] = [];
+  if (validProduits.every(p => !p.ean)) alertes.push('Aucun code EAN détecté');
+  if (validProduits.every(p => p.stock === 0)) alertes.push('Aucun stock détecté');
+  if (validProduits.every(p => !p.ddm)) alertes.push('Aucune DDM/DLUO détectée');
+  if (validProduits.every(p => p.pcb === 1)) alertes.push('Aucun PCB/colisage détecté');
+
+  console.log('[mercuriale] Produits valides:', validProduits.length, '/', totalRows, '| Alertes:', alertes);
+
+  if (isLargeFile) {
+    alertes.push('Fichier volumineux');
   }
 
-  try {
-    const textToSend = compactJson.slice(0, MAX_CHARS);
-    console.log('[mercuriale] Envoi à Gemini API:', textToSend.length, 'chars (tronqué de', compactJson.length, '),', totalRows, 'lignes totales');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000); // 9s max
-
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Voici des produits extraits d'une mercuriale fournisseur (JSON pré-traité).\nComplète et normalise chaque produit.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nRègles :\n- DDM format : YYYY-MM-DD ou null\n- TVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n- prix_achat_ht = champ "prix" des données\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
-        }] }]
-      }),
-    });
-
-    clearTimeout(timeout);
-
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.log('[mercuriale] Gemini API error:', { status: geminiRes.status, body: errText });
-      return NextResponse.json({ error: `Erreur Gemini API: ${geminiRes.status}` }, { status: 500 });
-    }
-
-    const geminiData = await geminiRes.json();
-    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('[mercuriale] Réponse Gemini:', responseText.length, 'chars');
-
-    // Parse JSON from Gemini response — expects { fournisseur_nom, fournisseur_email, produits: [...] }
-    let produits: ProduitParse[];
-    let fournisseurNomDetecte: string | null = null;
-    let fournisseurEmailDetecte: string | null = null;
-    try {
-      // Try object format first: { fournisseur_nom, fournisseur_email, produits: [...] }
-      const objMatch = responseText.match(/\{[\s\S]*\}/);
-      if (objMatch) {
-        const parsed = JSON.parse(objMatch[0]);
-        if (parsed.produits && Array.isArray(parsed.produits)) {
-          produits = parsed.produits;
-          fournisseurNomDetecte = parsed.fournisseur_nom || null;
-          fournisseurEmailDetecte = parsed.fournisseur_email || null;
-        } else if (Array.isArray(parsed)) {
-          produits = parsed;
-        } else {
-          throw new Error('Format inattendu');
-        }
-      } else {
-        // Fallback: try array format
-        const arrMatch = responseText.match(/\[[\s\S]*\]/);
-        if (!arrMatch) throw new Error('Pas de JSON trouvé');
-        produits = JSON.parse(arrMatch[0]);
-      }
-    } catch (parseErr) {
-      console.error('[mercuriale] Erreur parsing réponse Gemini:', parseErr);
-      console.error('[mercuriale] Réponse brute:', responseText.slice(0, 500));
-      return NextResponse.json({
-        error: 'Impossible de parser la réponse de Gemini',
-        raw_response: responseText.slice(0, 1000),
-      }, { status: 500 });
-    }
-
-    // Validate and clean products
-    const cleanProduits = produits.map((p, i) => ({
-      ref: String(p.ref || `REF-${i + 1}`),
-      nom: String(p.nom || ''),
-      marque: String(p.marque || ''),
-      ean: String(p.ean || ''),
-      prix_achat_ht: Math.max(0, Number(p.prix_achat_ht) || 0),
-      pcb: Math.max(1, Math.round(Number(p.pcb) || 1)),
-      stock: Math.max(0, Math.round(Number(p.stock) || 0)),
-      ddm: p.ddm || null,
-      tva: [5.5, 20].includes(Number(p.tva)) ? Number(p.tva) : 5.5,
-      poids: p.poids ? Number(p.poids) : null,
-    })).filter(p => p.nom && p.prix_achat_ht > 0);
-
-    // Detect missing columns
-    const alertes: string[] = [];
-    if (cleanProduits.every(p => !p.ean)) alertes.push('Aucun code EAN détecté');
-    if (cleanProduits.every(p => p.stock === 0)) alertes.push('Aucun stock détecté');
-    if (cleanProduits.every(p => !p.ddm)) alertes.push('Aucune DDM/DLUO détectée');
-    if (cleanProduits.every(p => p.pcb === 1)) alertes.push('Aucun PCB/colisage détecté');
-
-    console.log('[mercuriale] Produits valides:', cleanProduits.length, '| Alertes:', alertes);
-
-    if (isLargeFile) {
-      alertes.push('Fichier volumineux — analyse limitée aux 50 premières lignes par feuille');
-    }
-
-    return NextResponse.json({
-      success: true,
-      produits: cleanProduits,
-      nb_total: totalRows,
-      nb_parses: cleanProduits.length,
-      colonnes,
-      alertes,
-      fournisseur_nom: fournisseurNomDetecte,
-      fournisseur_email: fournisseurEmailDetecte,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      console.error('[mercuriale] Timeout Gemini API (9s)');
-      return NextResponse.json({ error: 'Timeout — le fichier est trop volumineux. Réessayez avec un fichier plus petit.' }, { status: 504 });
-    }
-    const errObj = err as Record<string, unknown>;
-    console.error('[mercuriale] Erreur générale:', err);
-    console.error('[mercuriale] Error details:', { message: errObj?.message, status: errObj?.status, response: errObj?.response, data: (errObj?.response as Record<string, unknown>)?.data });
-    return NextResponse.json({ error: 'Erreur lors de l\'analyse' }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    produits: validProduits,
+    nb_total: totalRows,
+    nb_parses: validProduits.length,
+    colonnes,
+    alertes,
+    fournisseur_nom: fournisseurNomDetecte,
+    fournisseur_email: null,
+  });
 }
 
 async function handleImport(body: {
