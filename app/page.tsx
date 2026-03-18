@@ -48,7 +48,8 @@ export default function CataloguePage() {
       .map(([id, qty]) => {
         const p = lookup.find(x => x.id === id);
         if (!p) return null;
-        return { ...p, qty, total: p.prix_wag_ht * qty };
+        const prix = typeof p.prix_wag_ht === 'number' && !isNaN(p.prix_wag_ht) ? p.prix_wag_ht : parseFloat(String(p.prix_wag_ht)) || 0;
+        return { ...p, qty, total: prix * qty };
       })
       .filter(Boolean) as (CatalogueProduit & { qty: number; total: number })[];
   }, [panier, allProduits, produits]);
@@ -77,12 +78,22 @@ export default function CataloguePage() {
     setCommandeEnvoyee(true);
   }
 
-  function joursRestants(ddm: string): number {
-    return Math.max(0, Math.floor((new Date(ddm).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  function num(v: unknown): number {
+    if (typeof v === 'number') return isNaN(v) ? 0 : v;
+    const n = parseFloat(String(v));
+    return isNaN(n) ? 0 : n;
+  }
+
+  function joursRestants(ddm: string | null | undefined): number {
+    if (!ddm) return 0;
+    const ts = new Date(ddm).getTime();
+    if (isNaN(ts)) return 0;
+    return Math.max(0, Math.floor((ts - Date.now()) / 86400000));
   }
 
   function formatEur(n: number): string {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
+    const safe = isNaN(n) ? 0 : n;
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(safe);
   }
 
   return (
@@ -182,7 +193,7 @@ export default function CataloguePage() {
                   </svg>
                   {/* Badge remise */}
                   <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    -{p.remise_pct}%
+                    -{Math.round(num(p.remise_pct))}%
                   </span>
                   {/* Badge DDM */}
                   <span className={`absolute top-2 right-2 text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -200,14 +211,14 @@ export default function CataloguePage() {
 
                   {/* Prix */}
                   <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-xl font-bold text-green-600">{formatEur(p.prix_wag_ht)}</span>
-                    <span className="text-sm text-gray-400 line-through">{formatEur(p.prix_gd_ht)}</span>
+                    <span className="text-xl font-bold text-green-600">{formatEur(num(p.prix_wag_ht))}</span>
+                    <span className="text-sm text-gray-400 line-through">{formatEur(num(p.prix_gd_ht))}</span>
                     <span className="text-xs text-gray-500">HT</span>
                   </div>
 
                   {/* Métriques */}
                   <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
-                    <span className="text-green-600 font-medium">Marge retail ~{p.marge_retail_estimee}%</span>
+                    <span className="text-green-600 font-medium">Marge retail ~{Math.round(num(p.marge_retail_estimee))}%</span>
                     <span>
                       {p.pmc_type === 'gd' ? 'vs GD' : p.pmc_type === 'pharma_bio' ? 'vs Pharma/Bio' : 'vs prix public'}
                     </span>
@@ -215,7 +226,7 @@ export default function CataloguePage() {
 
                   {/* Min commande */}
                   <p className="text-xs text-gray-400 mb-3">
-                    Min. {p.min_commande} {p.min_commande_unite}{p.min_commande > 1 ? 's' : ''} &bull; {p.stock_disponible} dispo
+                    Min. {num(p.min_commande) || 1} {p.min_commande_unite ?? 'carton'}{num(p.min_commande) > 1 ? 's' : ''} &bull; {num(p.stock_disponible)} dispo
                   </p>
 
                   {/* Bouton */}
@@ -235,7 +246,7 @@ export default function CataloguePage() {
                         >
                           +
                         </button>
-                        <span className="text-xs text-gray-500">{formatEur(p.prix_wag_ht * inPanier)}</span>
+                        <span className="text-xs text-gray-500">{formatEur(num(p.prix_wag_ht) * inPanier)}</span>
                       </div>
                     ) : (
                       <button
@@ -284,7 +295,7 @@ export default function CataloguePage() {
                 <div key={item.id} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{item.nom}</p>
-                    <p className="text-xs text-gray-500">{item.marque} — {formatEur(item.prix_wag_ht)} HT/u</p>
+                    <p className="text-xs text-gray-500">{item.marque} — {formatEur(num(item.prix_wag_ht))} HT/u</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">-</button>

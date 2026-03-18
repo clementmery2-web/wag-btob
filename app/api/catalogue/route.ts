@@ -1,6 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { DEMO_CATALOGUE } from '@/app/lib/catalogue-data';
+import type { CatalogueProduit } from '@/app/lib/catalogue-data';
+
+/**
+ * Mapping colonnes Supabase → CatalogueProduit.
+ * Supabase :  prix_vente_wag_ht, pmc_reference, remise_vs_gd, dluo, qmc
+ * Interface : prix_wag_ht, prix_gd_ht, remise_pct, ddm, min_commande
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapSupabaseToCatalogue(row: any): CatalogueProduit {
+  return {
+    id: row.id ?? '',
+    nom: row.nom ?? '',
+    marque: row.marque ?? '',
+    photo_url: row.photo_url ?? null,
+    categorie: row.categorie ?? '',
+    contenance: row.contenance ?? '',
+    prix_wag_ht: parseFloat(row.prix_vente_wag_ht) || 0,
+    prix_gd_ht: parseFloat(row.pmc_reference) || 0,
+    remise_pct: parseFloat(row.remise_vs_gd) || 0,
+    marge_retail_estimee: parseFloat(row.marge_retail_estimee) || 0,
+    ddm: row.dluo ?? '',
+    min_commande: parseInt(row.qmc, 10) || 1,
+    min_commande_unite: row.min_commande_unite ?? 'carton',
+    stock_disponible: parseInt(row.stock_disponible, 10) || 0,
+    pmc_type: row.pmc_type ?? 'gd',
+  };
+}
 
 export async function GET(req: NextRequest) {
   const categorie = req.nextUrl.searchParams.get('categorie');
@@ -43,9 +70,12 @@ export async function GET(req: NextRequest) {
           if (error) {
             console.error('[catalogue] Erreur Supabase (query) :', error.message, error.code, error.details);
           } else {
-            console.log('[catalogue] Supabase retourne', data?.length ?? 0, 'produits', categorie ? `(catégorie: ${categorie})` : '(toutes catégories)');
-            // Return Supabase data even if empty for a specific category (not fallback)
-            return NextResponse.json({ produits: data ?? [], source: 'supabase' });
+            console.log('[catalogue] Supabase retourne', data?.length ?? 0, 'produits');
+            if (data && data.length > 0) {
+              console.log('[catalogue] Colonnes premier produit :', Object.keys(data[0]).join(', '));
+            }
+            const mapped = (data ?? []).map(mapSupabaseToCatalogue);
+            return NextResponse.json({ produits: mapped, source: 'supabase' });
           }
         } else {
           console.log('[catalogue] Supabase OK mais 0 produits visible_catalogue=true — fallback démo');
