@@ -98,7 +98,6 @@ export function NouvelleOffreClient() {
         body: JSON.stringify({
           action: 'import',
           fournisseur_nom: fournisseur || fichier?.name?.replace(/\.[^.]+$/, '') || 'Fournisseur inconnu',
-          fournisseur_email: emailFournisseur,
           flux,
           produits,
         }),
