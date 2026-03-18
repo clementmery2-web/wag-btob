@@ -1,4 +1,4 @@
-import { Offre, Produit, ActionLog, Alerte, calculerScoreUrgence, getPriorite, calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd } from './types';
+import { Offre, Produit, ActionLog, Alerte, PmcSource, PmcType, calculerScoreUrgence, getPriorite, calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd, detecterPmcType, calculerFiabilitePmc } from './types';
 
 function d(daysFromNow: number): string {
   const date = new Date();
@@ -14,6 +14,17 @@ function buildProduit(partial: Partial<Produit> & { nom: string; marque: string;
   const scenario = calculerScenario(partial.prix_achat_ht, partial.pmc_ht);
   const flux = partial.flux ?? 'entrepot';
   const prixVente = calculerPrixVenteWag(partial.prix_achat_ht, flux);
+
+  // Build PMC sources with type
+  const defaultSources: PmcSource[] = [
+    { enseigne: 'Carrefour', prix: partial.pmc_ht * 1.05, type: 'gd' as PmcType },
+    { enseigne: 'Leclerc', prix: partial.pmc_ht * 0.95, type: 'gd' as PmcType },
+    { enseigne: 'Lidl', prix: partial.pmc_ht * 0.98, type: 'gd' as PmcType },
+  ];
+  const sources = partial.pmc_sources ?? defaultSources;
+  const pmcType = partial.pmc_type ?? detecterPmcType(sources);
+  const fiabilite = partial.pmc_fiabilite ?? calculerFiabilitePmc(sources, pmcType);
+
   return {
     id: partial.id ?? crypto.randomUUID(),
     offre_id: partial.offre_id ?? '',
@@ -29,12 +40,9 @@ function buildProduit(partial: Partial<Produit> & { nom: string; marque: string;
     categorie: partial.categorie ?? 'Épicerie',
     prix_achat_ht: partial.prix_achat_ht,
     pmc_ht: partial.pmc_ht,
-    pmc_sources: partial.pmc_sources ?? [
-      { enseigne: 'Carrefour', prix: partial.pmc_ht * 1.05 },
-      { enseigne: 'Leclerc', prix: partial.pmc_ht * 0.95 },
-      { enseigne: 'Lidl', prix: partial.pmc_ht * 0.98 },
-    ],
-    pmc_fiabilite: partial.pmc_fiabilite ?? 4,
+    pmc_type: pmcType,
+    pmc_sources: sources,
+    pmc_fiabilite: fiabilite,
     prix_vente_wag_ht: prixVente,
     marge_wag_pct: calculerMargeWag(partial.prix_achat_ht, prixVente),
     remise_vs_gd_pct: calculerRemiseVsGd(prixVente, partial.pmc_ht),
@@ -67,14 +75,42 @@ const produitsBonduelle: Produit[] = [
   buildProduit({ id: 'p13', nom: 'Champignons de Paris émincés', marque: 'Bonduelle', ean: '3083681025101', contenance: '400g', prix_achat_ht: 1.55, pmc_ht: 2.89, stock_disponible: 400, ddm: d(50), etat: 'declasse', categorie: 'Épicerie salée', pmc_fiabilite: 4 }),
 ];
 
-// ═══ OFFRE 3 : Gerblé — 6 biscuits ═══
+// ═══ OFFRE 3 : Gerblé — 6 biscuits (mix GD + Pharma/Bio) ═══
 const produitsGerble: Produit[] = [
-  buildProduit({ id: 'p14', nom: 'Biscuits sésame', marque: 'Gerblé', ean: '3175681105201', contenance: '230g', prix_achat_ht: 0.60, pmc_ht: 3.45, stock_disponible: 700, ddm: d(20), categorie: 'Épicerie sucrée', pmc_fiabilite: 4 }),
-  buildProduit({ id: 'p15', nom: 'Galettes riz complet chocolat', marque: 'Gerblé', ean: '3175681105218', contenance: '140g', prix_achat_ht: 0.85, pmc_ht: 2.79, stock_disponible: 500, ddm: d(100), categorie: 'Épicerie sucrée', pmc_fiabilite: 3 }),
-  buildProduit({ id: 'p16', nom: 'Sablés nappés chocolat noir', marque: 'Gerblé', ean: '3175681105225', contenance: '200g', prix_achat_ht: 1.90, pmc_ht: 3.50, stock_disponible: 300, ddm: d(30), etat: 'etiquette_abimee', categorie: 'Épicerie sucrée', pmc_fiabilite: 4 }),
-  buildProduit({ id: 'p17', nom: 'Biscuits lait amande', marque: 'Gerblé', ean: '3175681105232', contenance: '200g', prix_achat_ht: 0.40, pmc_ht: 3.25, stock_disponible: 1000, ddm: d(75), categorie: 'Épicerie sucrée', pmc_fiabilite: 5 }),
-  buildProduit({ id: 'p18', nom: 'Barres céréales chocolat', marque: 'Gerblé', ean: '3175681105249', contenance: '132g', prix_achat_ht: 1.65, pmc_ht: 3.10, stock_disponible: 450, ddm: d(55), categorie: 'Épicerie sucrée', flux: 'dropshipping', pmc_fiabilite: 3 }),
-  buildProduit({ id: 'p19', nom: 'Cookies pépites chocolat sans gluten', marque: 'Gerblé', ean: '3175681105256', contenance: '150g', prix_achat_ht: 1.10, pmc_ht: 4.15, stock_disponible: 250, ddm: d(45), categorie: 'Épicerie sucrée', pmc_fiabilite: 4 }),
+  // Produits trouvés en GD classique
+  buildProduit({ id: 'p14', nom: 'Biscuits sésame', marque: 'Gerblé', ean: '3175681105201', contenance: '230g', prix_achat_ht: 0.60, pmc_ht: 3.45, stock_disponible: 700, ddm: d(20), categorie: 'Épicerie sucrée' }),
+  buildProduit({ id: 'p15', nom: 'Galettes riz complet chocolat', marque: 'Gerblé', ean: '3175681105218', contenance: '140g', prix_achat_ht: 0.85, pmc_ht: 2.79, stock_disponible: 500, ddm: d(100), categorie: 'Épicerie sucrée' }),
+  // Produits trouvés uniquement en pharmacie/bio (pas en GD)
+  buildProduit({
+    id: 'p16', nom: 'Sablés nappés chocolat noir sans gluten', marque: 'Gerblé', ean: '3175681105225', contenance: '200g',
+    prix_achat_ht: 1.90, pmc_ht: 4.85, stock_disponible: 300, ddm: d(30), etat: 'etiquette_abimee', categorie: 'Épicerie sucrée',
+    pmc_type: 'pharma_bio' as PmcType,
+    pmc_sources: [
+      { enseigne: 'Cocooncenter.com', prix: 4.95, type: 'pharma_bio' as PmcType },
+      { enseigne: 'Onatera.com', prix: 4.75, type: 'pharma_bio' as PmcType },
+      { enseigne: 'Boutiquebio.fr', prix: 4.89, type: 'pharma_bio' as PmcType },
+    ],
+  }),
+  buildProduit({ id: 'p17', nom: 'Biscuits lait amande', marque: 'Gerblé', ean: '3175681105232', contenance: '200g', prix_achat_ht: 0.40, pmc_ht: 3.25, stock_disponible: 1000, ddm: d(75), categorie: 'Épicerie sucrée' }),
+  // Produit pharma/bio — barres diététiques
+  buildProduit({
+    id: 'p18', nom: 'Barres céréales chocolat protéinées', marque: 'Gerblé', ean: '3175681105249', contenance: '132g',
+    prix_achat_ht: 1.65, pmc_ht: 5.20, stock_disponible: 450, ddm: d(55), categorie: 'Épicerie sucrée', flux: 'dropshipping',
+    pmc_type: 'pharma_bio' as PmcType,
+    pmc_sources: [
+      { enseigne: 'Pharmaciedesdrakkars.com', prix: 5.30, type: 'pharma_bio' as PmcType },
+      { enseigne: 'Cocooncenter.com', prix: 5.10, type: 'pharma_bio' as PmcType },
+    ],
+  }),
+  // Produit avec PMC estimé (introuvable en GD et pharma)
+  buildProduit({
+    id: 'p19', nom: 'Cookies pépites chocolat sans gluten bio', marque: 'Gerblé', ean: '3175681105256', contenance: '150g',
+    prix_achat_ht: 1.10, pmc_ht: 4.15, stock_disponible: 250, ddm: d(45), categorie: 'Épicerie sucrée',
+    pmc_type: 'estime' as PmcType,
+    pmc_sources: [
+      { enseigne: 'Google Shopping', prix: 4.15, type: 'estime' as PmcType },
+    ],
+  }),
 ];
 
 // Assign offre_ids

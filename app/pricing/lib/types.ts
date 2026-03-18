@@ -14,6 +14,7 @@ export interface Produit {
   categorie: string;
   prix_achat_ht: number;
   pmc_ht: number | null;
+  pmc_type: PmcType;
   pmc_sources: PmcSource[];
   pmc_fiabilite: number; // 1-5
   prix_vente_wag_ht: number | null;
@@ -26,10 +27,50 @@ export interface Produit {
   updated_at: string;
 }
 
+export type PmcType = 'gd' | 'pharma_bio' | 'estime';
+
 export interface PmcSource {
   enseigne: string;
   prix: number;
+  type: PmcType;
 }
+
+// Sources GD classiques
+export const SOURCES_GD = ['Carrefour', 'Leclerc', 'Lidl', 'Auchan', 'Intermarché', 'Casino'] as const;
+
+// Sources Pharmacie / Bio
+export const SOURCES_PHARMA_BIO = [
+  'Cocooncenter.com',
+  'Pharmaciedesdrakkars.com',
+  'Onatera.com',
+  'Boutiquebio.fr',
+  'Google Shopping',
+  'Site officiel marque',
+] as const;
+
+export const PMC_TYPE_CONFIG: Record<PmcType, { label: string; labelAcheteur: string; maxFiabilite: number; bgClass: string; textClass: string }> = {
+  gd: {
+    label: 'PMC Grande Distribution',
+    labelAcheteur: 'moins cher que la grande distribution',
+    maxFiabilite: 5,
+    bgClass: 'bg-white',
+    textClass: 'text-gray-900',
+  },
+  pharma_bio: {
+    label: 'PMC Pharmacie / Bio',
+    labelAcheteur: 'moins cher qu\'en pharmacie ou boutique bio',
+    maxFiabilite: 3,
+    bgClass: 'bg-blue-50',
+    textClass: 'text-blue-900',
+  },
+  estime: {
+    label: 'PMC Estimé',
+    labelAcheteur: 'moins cher que le prix public',
+    maxFiabilite: 2,
+    bgClass: 'bg-orange-50',
+    textClass: 'text-orange-900',
+  },
+};
 
 export interface Offre {
   id: string;
@@ -110,6 +151,40 @@ export function calculerMargeWag(prixAchat: number, prixVente: number): number {
 export function calculerRemiseVsGd(prixVente: number, pmcHt: number): number {
   if (pmcHt === 0) return 0;
   return Math.round(((pmcHt - prixVente) / pmcHt) * 10000) / 100;
+}
+
+/**
+ * Détecte le type de PMC en fonction des sources disponibles.
+ * Logique : si au moins une source GD classique → 'gd'
+ * Sinon si au moins une source pharma/bio → 'pharma_bio'
+ * Sinon → 'estime'
+ */
+export function detecterPmcType(sources: PmcSource[]): PmcType {
+  if (sources.some(s => s.type === 'gd')) return 'gd';
+  if (sources.some(s => s.type === 'pharma_bio')) return 'pharma_bio';
+  return 'estime';
+}
+
+/**
+ * Calcule la fiabilité PMC en fonction du type et du nombre de sources.
+ * GD : jusqu'à ⭐⭐⭐⭐⭐
+ * Pharma/Bio : ⭐⭐⭐ max
+ * Estimé : ⭐⭐ max
+ */
+export function calculerFiabilitePmc(sources: PmcSource[], pmcType: PmcType): number {
+  const max = PMC_TYPE_CONFIG[pmcType].maxFiabilite;
+  const nbSources = sources.length;
+  if (nbSources >= 5) return Math.min(5, max);
+  if (nbSources >= 3) return Math.min(4, max);
+  if (nbSources >= 2) return Math.min(3, max);
+  return Math.min(2, max);
+}
+
+/**
+ * Retourne le message de remise adapté au type de PMC pour l'acheteur.
+ */
+export function getRemiseLabel(pmcType: PmcType, remisePct: number): string {
+  return `${remisePct.toFixed(0)}% ${PMC_TYPE_CONFIG[pmcType].labelAcheteur}`;
 }
 
 export function joursRestantsDdm(ddm: string): number {

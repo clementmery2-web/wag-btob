@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/app/pricing/lib/auth';
 import { DEMO_OFFRES } from '@/app/pricing/lib/demo-data';
-import { calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd } from '@/app/pricing/lib/types';
+import { calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd, getRemiseLabel } from '@/app/pricing/lib/types';
 
 export async function GET(req: NextRequest) {
   const auth = await verifySession();
@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       prix_vente_wag_ht: prixVente,
       marge_wag_pct: margeWag,
       remise_vs_gd_pct: remiseGd,
+      remise_label: getRemiseLabel(p.pmc_type, remiseGd),
     };
   });
 

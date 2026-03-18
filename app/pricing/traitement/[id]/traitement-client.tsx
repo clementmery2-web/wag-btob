@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DEMO_OFFRES } from '../../lib/demo-data';
-import { calculerScenario, calculerMargeWag, calculerRemiseVsGd, calculerPrixVenteWag, joursRestantsDdm, formatEur, formatPct } from '../../lib/types';
-import type { Produit } from '../../lib/types';
+import { calculerScenario, calculerMargeWag, calculerRemiseVsGd, calculerPrixVenteWag, joursRestantsDdm, formatEur, formatPct, PMC_TYPE_CONFIG, getRemiseLabel } from '../../lib/types';
+import type { Produit, PmcType } from '../../lib/types';
 
 const SCENARIO_CONFIG = {
   A: { label: 'JACKPOT', emoji: '🟢', cls: 'bg-green-100 text-green-800 border-green-300', desc: 'Prix achat < 20% PMC HT' },
@@ -80,17 +80,21 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   }
 
   const pmcHt = current.pmc_ht ?? 0;
+  const pmcType: PmcType = current.pmc_type ?? 'gd';
+  const pmcTypeConfig = PMC_TYPE_CONFIG[pmcType];
   const prixVente = sliderValue ?? current.prix_vente_wag_ht ?? calculerPrixVenteWag(current.prix_achat_ht, current.flux);
   const scenario = pmcHt > 0 ? calculerScenario(current.prix_achat_ht, pmcHt) : null;
   const margeWag = calculerMargeWag(current.prix_achat_ht, prixVente);
   const remiseGd = pmcHt > 0 ? calculerRemiseVsGd(prixVente, pmcHt) : 0;
   const joursDdm = joursRestantsDdm(current.ddm);
   const sc = scenario ? SCENARIO_CONFIG[scenario] : null;
+  const remiseLabel = getRemiseLabel(pmcType, remiseGd);
 
   // Alertes
   const alertes: string[] = [];
   if (remiseGd > 75) alertes.push('PMC potentiellement faux (remise > 75%)');
   if (joursDdm < 30) alertes.push('DDM très courte — vérifier pricing');
+  if (pmcType === 'estime') alertes.push('PMC estimé — vérifier manuellement avant validation');
 
   const prixReventeTTC = Math.round(prixVente * 1.055 * 1.3 * 100) / 100; // +5.5% TVA + marge retail ~30%
   const margeRetailEstimee = 30;
@@ -183,12 +187,23 @@ export function TraitementClient({ offreId }: { offreId: string }) {
                 <p className="text-xs font-medium text-gray-400 uppercase mb-1">Prix achat WAG HT</p>
                 <p className="text-2xl font-bold text-gray-900">{formatEur(current.prix_achat_ht)}</p>
               </div>
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase mb-1">PMC GD HT</p>
+              <div className={`rounded-lg p-3 -m-1 ${pmcTypeConfig.bgClass}`}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className={`text-xs font-medium uppercase ${pmcTypeConfig.textClass === 'text-gray-900' ? 'text-gray-400' : pmcTypeConfig.textClass} opacity-80`}>
+                    {pmcTypeConfig.label}
+                  </p>
+                  {current.pmc_type !== 'gd' && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                      current.pmc_type === 'pharma_bio' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                    }`}>
+                      {current.pmc_type === 'pharma_bio' ? 'PHARMA/BIO' : 'ESTIMÉ'}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
-                  <p className="text-2xl font-bold text-gray-900">{pmcHt ? formatEur(pmcHt) : '—'}</p>
+                  <p className={`text-2xl font-bold ${pmcTypeConfig.textClass}`}>{pmcHt ? formatEur(pmcHt) : '—'}</p>
                   {current.pmc_fiabilite > 0 && (
-                    <span className="text-xs text-amber-500" title={`Fiabilité ${current.pmc_fiabilite}/5`}>
+                    <span className="text-xs text-amber-500" title={`Fiabilité ${current.pmc_fiabilite}/${PMC_TYPE_CONFIG[current.pmc_type].maxFiabilite} max (${pmcTypeConfig.label})`}>
                       {'⭐'.repeat(current.pmc_fiabilite)}
                     </span>
                   )}
@@ -235,7 +250,9 @@ export function TraitementClient({ offreId }: { offreId: string }) {
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-400">Remise vs GD</p>
+                <p className="text-xs text-gray-400">
+                  Remise vs {pmcType === 'gd' ? 'GD' : pmcType === 'pharma_bio' ? 'Pharma/Bio' : 'estimé'}
+                </p>
                 <p className="text-xl font-bold text-indigo-600">-{formatPct(remiseGd)}</p>
               </div>
             </div>
@@ -265,7 +282,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
                 <div className="text-right">
                   <p className="text-sm font-bold text-indigo-600">{formatEur(prixVente)} HT</p>
                   <p className="text-xs text-gray-500">Revente TTC : ~{formatEur(prixReventeTTC)}</p>
-                  <p className="text-xs text-green-600">-{formatPct(remiseGd)} vs GD • Marge retail ~{margeRetailEstimee}%</p>
+                  <p className="text-xs text-green-600">{remiseLabel} • Marge retail ~{margeRetailEstimee}%</p>
                 </div>
               </div>
             </div>
