@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DEMO_OFFRES } from '../../lib/demo-data';
 import { calculerScenario, calculerMargeWag, calculerRemiseVsGd, calculerPrixVenteWag, joursRestantsDdm, formatEur, formatPct, PMC_TYPE_CONFIG, getRemiseLabel } from '../../lib/types';
-import type { Produit, PmcType } from '../../lib/types';
+import type { Produit, PmcType, PmcSource } from '../../lib/types';
 
 const PMC_SOURCES_LIST = ['Carrefour', 'Leclerc', 'Auchan', 'Intermarché', 'Lidl', 'Pharmacie', 'Site marque'] as const;
 
@@ -21,9 +21,17 @@ const ETAT_LABELS: Record<string, string> = {
   emballage_abime: 'Emballage abîmé',
 };
 
+// Extended Produit type for API data (may have extra fields)
+interface ProduitExt extends Produit {
+  pmc_statut?: string;
+  fournisseur_nom?: string;
+}
+
 export function TraitementClient({ offreId }: { offreId: string }) {
-  const offre = DEMO_OFFRES.find(o => o.id === offreId);
-  const [produits, setProduits] = useState<Produit[]>(offre?.produits ?? []);
+  const [produits, setProduits] = useState<ProduitExt[]>([]);
+  const [fournisseurNom, setFournisseurNom] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState<string>('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showRules, setShowRules] = useState(false);
   const [sliderValue, setSliderValue] = useState<number | null>(null);
@@ -36,6 +44,37 @@ export function TraitementClient({ offreId }: { offreId: string }) {
     pmc_ht: number; pmc_type: PmcType; pmc_fiabilite: number; pmc_statut: string;
     pmc_sources: { enseigne: string; prix: number; type: string }[]; alertes: string[];
   }>>({});
+
+  // Fetch products from API
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/pricing/produits?offre_id=${encodeURIComponent(offreId)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.produits && data.produits.length > 0) {
+          setProduits(data.produits);
+          setFournisseurNom(data.produits[0].fournisseur_nom ?? '');
+          setSource(data.source ?? 'supabase');
+        } else {
+          // Fallback to demo
+          const demoOffre = DEMO_OFFRES.find(o => o.id === offreId);
+          if (demoOffre) {
+            setProduits(demoOffre.produits);
+            setFournisseurNom(demoOffre.fournisseur);
+            setSource('demo');
+          }
+        }
+      })
+      .catch(() => {
+        const demoOffre = DEMO_OFFRES.find(o => o.id === offreId);
+        if (demoOffre) {
+          setProduits(demoOffre.produits);
+          setFournisseurNom(demoOffre.fournisseur);
+          setSource('demo');
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [offreId]);
 
   const current = produits[currentIndex];
   const treated = produits.filter(p => p.statut !== 'a_traiter').length;
@@ -93,7 +132,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       switch (e.key) {
         case 'ArrowRight': handleAction('valide'); break;
         case 'ArrowLeft': handleAction('contre_offre'); break;
@@ -105,10 +144,19 @@ export function TraitementClient({ offreId }: { offreId: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [handleAction]);
 
-  if (!offre) {
+  if (loading) {
     return (
       <div className="text-center py-16">
-        <p className="text-gray-500">Offre introuvable</p>
+        <div className="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500 mt-2">Chargement des produits...</p>
+      </div>
+    );
+  }
+
+  if (produits.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-gray-500">Offre introuvable ou aucun produit</p>
         <Link href="/pricing/offres" className="text-indigo-600 text-sm mt-2 inline-block">← Retour aux offres</Link>
       </div>
     );
@@ -131,13 +179,13 @@ export function TraitementClient({ offreId }: { offreId: string }) {
     );
   }
 
-  // Use live PMC data if available, else fall back to demo data
-  const liveData = current ? pmcLiveData[current.id] : undefined;
+  // Use live PMC data if available, else fall back to product data
+  const liveData = pmcLiveData[current.id];
   const pmcHt = liveData?.pmc_ht ?? current.pmc_ht ?? 0;
   const pmcType: PmcType = liveData?.pmc_type ?? current.pmc_type ?? 'gd';
   const pmcTypeConfig = PMC_TYPE_CONFIG[pmcType];
-  const pmcStatut = liveData?.pmc_statut ?? (current.pmc_type === 'estime' ? 'estime' : 'auto_trouve');
-  const liveSources = liveData?.pmc_sources ?? [];
+  const pmcStatut = liveData?.pmc_statut ?? (current as ProduitExt).pmc_statut ?? (current.pmc_type === 'estime' ? 'estime' : 'auto_trouve');
+  const liveSources: PmcSource[] = (liveData?.pmc_sources ?? []).map(s => ({ enseigne: s.enseigne, prix: s.prix, type: s.type as PmcType }));
   const liveAlertes = liveData?.alertes ?? [];
   const prixVente = sliderValue ?? current.prix_vente_wag_ht ?? calculerPrixVenteWag(current.prix_achat_ht, current.flux);
   const scenario = pmcHt > 0 ? calculerScenario(current.prix_achat_ht, pmcHt) : null;
@@ -148,12 +196,12 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   const remiseLabel = getRemiseLabel(pmcType, remiseGd);
 
   // Alertes
-  const alertes: string[] = [];
+  const alertes: string[] = [...liveAlertes];
   if (remiseGd > 75) alertes.push('PMC potentiellement faux (remise > 75%)');
   if (joursDdm < 30) alertes.push('DDM très courte — vérifier pricing');
-  if (pmcType === 'estime') alertes.push('PMC estimé — vérifier manuellement avant validation');
+  if (pmcType === 'estime' && !liveAlertes.some(a => a.includes('estimé'))) alertes.push('PMC estimé — vérifier manuellement avant validation');
 
-  const prixReventeTTC = Math.round(prixVente * 1.055 * 1.3 * 100) / 100; // +5.5% TVA + marge retail ~30%
+  const prixReventeTTC = Math.round(prixVente * 1.055 * 1.3 * 100) / 100;
   const margeRetailEstimee = 30;
 
   return (
@@ -166,10 +214,12 @@ export function TraitementClient({ offreId }: { offreId: string }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
           </Link>
-          <h1 className="text-lg font-bold text-gray-900">{offre.fournisseur}</h1>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">{fournisseurNom || 'Offre'}</h1>
+            {source && <p className="text-[10px] text-gray-400">Source : {source === 'supabase' ? '🟢 Supabase' : '🟡 Démo'}</p>}
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Progress */}
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${(treated / produits.length) * 100}%` }} />
@@ -198,7 +248,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
           <p className="text-gray-600">• Si marge WAG &gt; 35% → valider automatiquement</p>
           <p className="text-gray-600">• Si scénario D → refuser automatiquement</p>
           <p className="text-gray-600">• Si scénario C → contre-offre automatiquement</p>
-          <p className="text-xs text-gray-400 mt-2">Ces règles sont appliquées à titre indicatif — données de démonstration</p>
+          <p className="text-xs text-gray-400 mt-2">Ces règles sont appliquées à titre indicatif</p>
         </div>
       )}
 
@@ -206,11 +256,16 @@ export function TraitementClient({ offreId }: { offreId: string }) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Card produit (40%) */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          {/* Photo placeholder */}
+          {/* Photo */}
           <div className="bg-gray-100 rounded-lg h-40 flex items-center justify-center">
-            <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M18 13.5a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            {current.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={current.photo_url} alt={current.nom} className="w-full h-full object-contain rounded-lg" />
+            ) : (
+              <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M18 13.5a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            )}
           </div>
 
           <div>

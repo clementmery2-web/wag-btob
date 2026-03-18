@@ -1,15 +1,64 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { DEMO_OFFRES } from '../../lib/demo-data';
 import { formatEur, formatPct } from '../../lib/types';
 
+interface ProduitData {
+  id: string;
+  nom: string;
+  marque: string;
+  contenance: string;
+  prix_achat_ht: number;
+  prix_vente_wag_ht: number | null;
+  stock_disponible: number;
+  statut: string;
+  fournisseur_nom?: string;
+}
+
 export function ValidationClient({ offreId }: { offreId: string }) {
-  const offre = DEMO_OFFRES.find(o => o.id === offreId);
+  const [produits, setProduits] = useState<ProduitData[]>([]);
+  const [fournisseur, setFournisseur] = useState<string>('');
+  const [loading, setLoading] = useState(true);
   const [planning, setPlanning] = useState<'maintenant' | 'programme' | 'manuelle'>('maintenant');
   const [confirmed, setConfirmed] = useState(false);
 
-  if (!offre) {
+  useEffect(() => {
+    fetch(`/api/pricing/produits?offre_id=${encodeURIComponent(offreId)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.produits && data.produits.length > 0) {
+          setProduits(data.produits);
+          setFournisseur(data.produits[0].fournisseur_nom ?? '');
+        } else {
+          // Fallback demo
+          const offre = DEMO_OFFRES.find(o => o.id === offreId);
+          if (offre) {
+            setProduits(offre.produits);
+            setFournisseur(offre.fournisseur);
+          }
+        }
+      })
+      .catch(() => {
+        const offre = DEMO_OFFRES.find(o => o.id === offreId);
+        if (offre) {
+          setProduits(offre.produits);
+          setFournisseur(offre.fournisseur);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [offreId]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-16">
+        <div className="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500 mt-2">Chargement...</p>
+      </div>
+    );
+  }
+
+  if (produits.length === 0) {
     return (
       <div className="text-center py-16">
         <p className="text-gray-500">Offre introuvable</p>
@@ -18,13 +67,13 @@ export function ValidationClient({ offreId }: { offreId: string }) {
     );
   }
 
-  const valides = offre.produits.filter(p => p.statut === 'valide');
-  const contreOffres = offre.produits.filter(p => p.statut === 'contre_offre');
-  const refuses = offre.produits.filter(p => p.statut === 'refuse');
-  const passes = offre.produits.filter(p => p.statut === 'passe' || p.statut === 'a_traiter');
+  const valides = produits.filter(p => p.statut === 'valide');
+  const contreOffres = produits.filter(p => p.statut === 'contre_offre');
+  const refuses = produits.filter(p => p.statut === 'refuse');
+  const passes = produits.filter(p => p.statut === 'passe' || p.statut === 'a_traiter');
 
-  const valeurAchat = offre.produits.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
-  const caPotentiel = offre.produits.filter(p => p.statut === 'valide').reduce((s, p) => s + (p.prix_vente_wag_ht ?? 0) * p.stock_disponible, 0);
+  const valeurAchat = produits.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
+  const caPotentiel = valides.reduce((s, p) => s + (p.prix_vente_wag_ht ?? 0) * p.stock_disponible, 0);
   const margeEstimee = caPotentiel - valides.reduce((s, p) => s + p.prix_achat_ht * p.stock_disponible, 0);
   const margePct = caPotentiel > 0 ? (margeEstimee / caPotentiel) * 100 : 0;
 
@@ -53,7 +102,7 @@ export function ValidationClient({ offreId }: { offreId: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
           </svg>
         </Link>
-        <h1 className="text-xl font-bold text-gray-900">Validation — {offre.fournisseur}</h1>
+        <h1 className="text-xl font-bold text-gray-900">Validation — {fournisseur}</h1>
       </div>
 
       {/* Résumé 3 colonnes */}
@@ -92,7 +141,7 @@ export function ValidationClient({ offreId }: { offreId: string }) {
       {/* Preview email */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-gray-900">Preview email — {offre.fournisseur}</h3>
+          <h3 className="text-sm font-bold text-gray-900">Preview email — {fournisseur}</h3>
           <button className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Modifier le message</button>
         </div>
         <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-2 font-mono">

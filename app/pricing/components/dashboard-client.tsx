@@ -1,17 +1,59 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { DEMO_OFFRES, DEMO_ACTIONS, DEMO_ALERTES, getDemoKPIs } from '../lib/demo-data';
+import { getDemoKPIs, DEMO_ALERTES, DEMO_ACTIONS } from '../lib/demo-data';
 import { formatEur, formatPct } from '../lib/types';
 
+interface KPIs {
+  offres_a_traiter: number;
+  produits_en_ligne: number;
+  ca_potentiel: number;
+  engagement_potentiel: number;
+  marge_wag_moyenne: number;
+  taux_acceptation_contre_offres: number;
+  pmc_manuel_requis?: number;
+}
+
+interface AlerteData {
+  type: string;
+  message: string;
+  produit_id?: string;
+  depuis?: string;
+}
+
+interface ActionData {
+  id: string;
+  type: string;
+  description: string;
+  created_at: string;
+}
+
 export function DashboardClient() {
-  const kpis = getDemoKPIs();
-  const alertes = DEMO_ALERTES;
-  const actions = DEMO_ACTIONS.slice(0, 10);
+  const [kpis, setKpis] = useState<KPIs>(getDemoKPIs());
+  const [alertes, setAlertes] = useState<AlerteData[]>(DEMO_ALERTES);
+  const [actions, setActions] = useState<ActionData[]>(DEMO_ACTIONS.slice(0, 10));
+  const [source, setSource] = useState<string>('');
   const [photosAVerifier, setPhotosAVerifier] = useState(0);
   const [pmcManuelRequis, setPmcManuelRequis] = useState(0);
 
   useEffect(() => {
+    // Fetch dashboard data from Supabase
+    fetch('/api/pricing/dashboard')
+      .then(r => r.json())
+      .then(data => {
+        if (data.kpis) {
+          setKpis(data.kpis);
+          setPmcManuelRequis(data.kpis.pmc_manuel_requis ?? 0);
+        }
+        if (data.alertes && data.alertes.length > 0) setAlertes(data.alertes);
+        if (data.activite && data.activite.length > 0) setActions(data.activite);
+        if (data.source) setSource(data.source);
+      })
+      .catch(() => {
+        setSource('demo');
+      });
+
+    // Fetch photos count
     fetch('/api/pricing/photos')
       .then(r => r.json())
       .then(data => {
@@ -23,7 +65,14 @@ export function DashboardClient() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          {source && (
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Source : {source === 'supabase' ? '🟢 Supabase' : '🟡 Démo'}
+            </p>
+          )}
+        </div>
         <Link
           href="/pricing/offres"
           className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -100,6 +149,9 @@ export function DashboardClient() {
           <h2 className="text-sm font-bold text-gray-900">Activité récente</h2>
         </div>
         <div className="divide-y divide-gray-100">
+          {actions.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-gray-400">Aucune activité récente</div>
+          )}
           {actions.map(a => (
             <div key={a.id} className="px-4 py-3 flex items-start gap-3">
               <ActionIcon type={a.type} />
@@ -140,6 +192,8 @@ function ActionIcon({ type }: { type: string }) {
     refus: 'bg-red-100 text-red-600',
     contre_offre: 'bg-orange-100 text-orange-600',
     prix_ajuste: 'bg-purple-100 text-purple-600',
+    pmc_manquant: 'bg-orange-100 text-orange-600',
+    info: 'bg-gray-100 text-gray-500',
   };
   return (
     <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${colors[type] ?? 'bg-gray-100 text-gray-500'}`}>
@@ -151,6 +205,7 @@ function ActionIcon({ type }: { type: string }) {
 }
 
 function formatRelativeTime(iso: string): string {
+  if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `Il y a ${mins}min`;
