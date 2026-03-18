@@ -17,7 +17,7 @@ function getSupabase() {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapToBackofficeProduit(row: any) {
-  const prixAchat = parseFloat(row.prix_achat_ht) || 0;
+  const prixAchat = parseFloat(row.prix_achat_wag_ht) || 0;
   const pmcHt = parseFloat(row.pmc_reference) || null;
   const flux = row.flux || 'entrepot';
   const pmcType: PmcType = row.pmc_type || 'gd';
@@ -38,7 +38,7 @@ function mapToBackofficeProduit(row: any) {
 
   return {
     id: row.id,
-    offre_id: row.fournisseur_nom ? Buffer.from(row.fournisseur_nom).toString('base64url') : '',
+    offre_id: row.fournisseur_id ? Buffer.from(String(row.fournisseur_id)).toString('base64url') : '',
     nom: row.nom ?? '',
     marque: row.marque ?? '',
     ean: row.ean ?? '',
@@ -62,7 +62,7 @@ function mapToBackofficeProduit(row: any) {
     scenario,
     statut: row.statut ?? 'a_traiter',
     note_interne: row.note_interne ?? '',
-    fournisseur_nom: row.fournisseur_nom ?? null,
+    fournisseur_id: row.fournisseur_id ?? null,
     visible_catalogue: row.visible_catalogue ?? false,
     created_at: row.created_at ?? '',
     updated_at: row.updated_at ?? '',
@@ -86,15 +86,15 @@ export async function GET(req: NextRequest) {
       if (produitId) {
         query = query.eq('id', produitId);
       } else if (fournisseur) {
-        query = query.eq('fournisseur_nom', fournisseur);
+        query = query.eq('fournisseur_id', fournisseur);
       } else if (offreId) {
         // offreId is base64url-encoded fournisseur_nom
         try {
           const decoded = Buffer.from(offreId, 'base64url').toString('utf-8');
-          query = query.eq('fournisseur_nom', decoded);
+          query = query.eq('fournisseur_id', decoded);
         } catch {
           // If decode fails, try as literal
-          query = query.eq('fournisseur_nom', offreId);
+          query = query.eq('fournisseur_id', offreId);
         }
       }
 

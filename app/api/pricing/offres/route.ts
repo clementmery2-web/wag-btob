@@ -20,7 +20,7 @@ function groupByFournisseur(produits: any[]) {
   const groups = new Map<string, typeof produits>();
 
   for (const p of produits) {
-    const key = p.fournisseur_nom || 'Inconnu';
+    const key = p.fournisseur_id || 'Inconnu';
     const list = groups.get(key) ?? [];
     list.push(p);
     groups.set(key, list);
@@ -43,8 +43,8 @@ function groupByFournisseur(produits: any[]) {
       .reverse()[0] ?? new Date().toISOString();
 
     const valeur = items.reduce(
-      (s: number, p: { prix_achat_ht?: string | number; stock_disponible?: string | number }) =>
-        s + (parseFloat(String(p.prix_achat_ht ?? 0)) || 0) * (parseInt(String(p.stock_disponible ?? 0)) || 0),
+      (s: number, p: { prix_achat_wag_ht?: string | number; stock_disponible?: string | number }) =>
+        s + (parseFloat(String(p.prix_achat_wag_ht ?? 0)) || 0) * (parseInt(String(p.stock_disponible ?? 0)) || 0),
       0
     );
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data, error } = await supabase
         .from('produits')
-        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_ht, prix_vente_wag_ht, pmc_reference, pmc_type, pmc_fiabilite, pmc_statut, statut, fournisseur_nom, fournisseur_id, created_at, visible_catalogue')
+        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_wag_ht, prix_vente_wag_ht, pmc_reference, pmc_type, pmc_fiabilite, pmc_statut, statut, fournisseur_id, created_at, visible_catalogue')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -103,7 +103,7 @@ export async function GET(req: NextRequest) {
       } else if (!data || data.length === 0) {
         console.log('[offres] Fallback démo car: Supabase retourne 0 produits');
       } else {
-        console.log('[offres] Offres Supabase:', data.length, data.slice(0, 3).map(p => ({ fournisseur_id: p.fournisseur_id, fournisseur_nom: p.fournisseur_nom })));
+        console.log('[offres] Offres Supabase:', data.length, data.slice(0, 3).map(p => ({ fournisseur_id: p.fournisseur_id })));
         let offres = groupByFournisseur(data);
         console.log('[offres] Groupes fournisseurs:', offres.length, offres.map(o => o.fournisseur));
 

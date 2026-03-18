@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000).toISOString();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
 
-  let query = supabase.from('produits').select('id, ean, nom, marque, categorie, prix_achat_ht, prix_vente_wag_ht, contenance, pmc_reference, pmc_fiabilite, pmc_updated_at, pmc_statut, dluo');
+  let query = supabase.from('produits').select('id, ean, nom, marque, categorie, prix_achat_wag_ht, prix_vente_wag_ht, contenance, pmc_reference, pmc_fiabilite, pmc_updated_at, pmc_statut, dluo');
 
   if (priorite === 'haute') {
     // Priority HIGH: pmc_fiabilite < 3 OR ddm < 60j OR pmc_updated > 3 days

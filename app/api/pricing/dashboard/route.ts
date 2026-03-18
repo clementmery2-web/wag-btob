@@ -27,7 +27,7 @@ export async function GET() {
   ] = await Promise.all([
     supabase.from('produits').select('*', { count: 'exact', head: true }).eq('visible_catalogue', true),
     supabase.from('produits').select('*', { count: 'exact', head: true }).lt('pmc_fiabilite', 3),
-    supabase.from('produits').select('prix_achat_ht, prix_vente_wag_ht, stock_disponible, marge_wag_pct, statut, fournisseur_nom, visible_catalogue'),
+    supabase.from('produits').select('prix_achat_wag_ht, prix_vente_wag_ht, stock_disponible, statut, fournisseur_id, visible_catalogue'),
     supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20),
   ]);
 
@@ -35,16 +35,21 @@ export async function GET() {
 
   // Count distinct fournisseurs with unprocessed products
   const fournisseursATraiter = new Set(
-    produits.filter(p => p.statut === 'a_traiter' || p.statut === 'nouvelle' || !p.statut).map(p => p.fournisseur_nom)
+    produits.filter(p => p.statut === 'a_traiter' || p.statut === 'nouvelle' || !p.statut).map(p => p.fournisseur_id)
   );
 
   const enLigne = produits.filter(p => p.visible_catalogue === true);
   const caPotentiel = enLigne.reduce((s, p) => s + (parseFloat(p.prix_vente_wag_ht) || 0) * (parseInt(p.stock_disponible) || 0), 0);
-  const engagement = produits.reduce((s, p) => s + (parseFloat(p.prix_achat_ht) || 0) * (parseInt(p.stock_disponible) || 0), 0);
+  const engagement = produits.reduce((s, p) => s + (parseFloat(p.prix_achat_wag_ht) || 0) * (parseInt(p.stock_disponible) || 0), 0);
 
+  // Compute marge from prix_achat and prix_vente
   const marges = produits
-    .map(p => parseFloat(p.marge_wag_pct))
-    .filter(m => !isNaN(m) && m > 0);
+    .map(p => {
+      const achat = parseFloat(p.prix_achat_wag_ht) || 0;
+      const vente = parseFloat(p.prix_vente_wag_ht) || 0;
+      return achat > 0 && vente > 0 ? ((vente - achat) / vente) * 100 : 0;
+    })
+    .filter(m => m > 0);
   const margeMoy = marges.length ? marges.reduce((a, b) => a + b, 0) / marges.length : 0;
 
   const kpis = {
