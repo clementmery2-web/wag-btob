@@ -6,12 +6,10 @@ export default function ConfirmationPage() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">W</span>
-            </div>
+            <span className="text-3xl">🌿</span>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 leading-tight">WAG <span className="text-green-600">BtoB</span></h1>
-              <p className="text-xs text-gray-500 -mt-0.5">Espace fournisseur</p>
+              <h1 className="text-2xl font-bold text-gray-900 leading-tight">Willy <span className="text-green-600">Anti-gaspi</span></h1>
+              <p className="text-xs text-gray-500 -mt-0.5">Marketplace anti-gaspi BtoB</p>
             </div>
           </Link>
         </div>

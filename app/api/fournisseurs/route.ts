@@ -5,16 +5,11 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024;
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const prenom = formData.get('prenom') as string | null;
-    const email = formData.get('email') as string | null;
+    const contact = formData.get('contact') as string | null;
     const fichier = formData.get('fichier') as File | null;
 
-    if (!prenom?.trim() || !email?.trim() || !fichier) {
-      return NextResponse.json({ error: 'Prenom, email et fichier sont requis.' }, { status: 400 });
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: 'Adresse email invalide.' }, { status: 400 });
+    if (!contact?.trim() || !fichier) {
+      return NextResponse.json({ error: 'Contact et fichier sont requis.' }, { status: 400 });
     }
 
     if (fichier.size > MAX_FILE_SIZE) {
@@ -31,8 +26,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prenom: prenom.trim(),
-          email: email.trim(),
+          contact: contact.trim(),
           fichier_nom: fichier.name,
           fichier_type: fichier.type,
           fichier_taille: fichier.size,
@@ -43,8 +37,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       console.log('[Fournisseur] Nouveau fichier recu:', {
-        prenom: prenom.trim(),
-        email: email.trim(),
+        contact: contact.trim(),
         fichier: fichier.name,
         taille: `${(fichier.size / 1024).toFixed(1)} Ko`,
       });
