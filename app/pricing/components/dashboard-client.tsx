@@ -9,6 +9,7 @@ export function DashboardClient() {
   const alertes = DEMO_ALERTES;
   const actions = DEMO_ACTIONS.slice(0, 10);
   const [photosAVerifier, setPhotosAVerifier] = useState(0);
+  const [pmcManuelRequis, setPmcManuelRequis] = useState(0);
 
   useEffect(() => {
     fetch('/api/pricing/photos')
@@ -43,6 +44,21 @@ export function DashboardClient() {
             <div>
               <p className="text-sm font-bold text-amber-800">{photosAVerifier} photo{photosAVerifier > 1 ? 's' : ''} a verifier</p>
               <p className="text-xs text-amber-600">Cliquez pour gerer les photos produits →</p>
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {/* Alerte PMC manquants */}
+      {pmcManuelRequis > 0 && (
+        <Link href="/pricing/offres?pmc=manuel_requis" className="block">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center gap-3 hover:bg-orange-100 transition-colors">
+            <span className="inline-flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-600 rounded-full text-lg">
+              💰
+            </span>
+            <div>
+              <p className="text-sm font-bold text-orange-800">{pmcManuelRequis} produit{pmcManuelRequis > 1 ? 's' : ''} sans PMC fiable</p>
+              <p className="text-xs text-orange-600">Saisie manuelle requise →</p>
             </div>
           </div>
         </Link>
