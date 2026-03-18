@@ -4,8 +4,19 @@ import { Resend } from 'resend';
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  if (!url || !key) return null;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = serviceKey || anonKey;
+
+  console.log('[commande] Supabase config:', {
+    url: url ? url.slice(0, 30) + '...' : 'MISSING',
+    keyType: serviceKey ? 'SERVICE_ROLE' : anonKey ? 'ANON (⚠️ RLS needed)' : 'MISSING',
+  });
+
+  if (!url || !key) {
+    console.error('[commande] Supabase non configuré — url:', !!url, 'key:', !!key);
+    return null;
+  }
   return createClient(url, key);
 }
 
@@ -95,6 +106,16 @@ export async function POST(req: NextRequest) {
 
   const { email, telephone, note, produits, total_ht, remise_pct, total_apres_remise_ht } = body;
 
+  console.log('[commande] Payload reçu:', {
+    email,
+    telephone: telephone || null,
+    nbProduits: produits?.length,
+    total_ht,
+    remise_pct,
+    total_apres_remise_ht,
+    produits: produits?.map(p => ({ nom: p.nom?.slice(0, 30), nb_cartons: p.nb_cartons, total: p.total_ligne_ht })),
+  });
+
   // Validation
   if (!email) {
     return NextResponse.json({ error: 'Email requis' }, { status: 400 });
@@ -109,26 +130,39 @@ export async function POST(req: NextRequest) {
   const numero = `WAG-${year}-${rand}`;
 
   // 1. INSERT commande
+  const insertPayload = {
+    email_acheteur: email,
+    telephone_acheteur: telephone || null,
+    note: note || null,
+    total_ht,
+    remise_pct,
+    total_apres_remise_ht,
+    statut: 'nouvelle',
+  };
+  console.log('[commande] INSERT commandes:', insertPayload);
+
   const { data: commande, error: errCommande } = await supabase
     .from('commandes')
-    .insert({
-      email_acheteur: email,
-      telephone_acheteur: telephone || null,
-      note: note || null,
-      total_ht,
-      remise_pct,
-      total_apres_remise_ht,
-      statut: 'nouvelle',
-    })
+    .insert(insertPayload)
     .select('id')
     .single();
 
   if (errCommande || !commande) {
-    console.error('[commande] Erreur insertion commande :', errCommande?.message);
-    return NextResponse.json({ error: errCommande?.message || 'Erreur insertion commande' }, { status: 500 });
+    console.error('[commande] ❌ Erreur insertion commande:', {
+      message: errCommande?.message,
+      code: errCommande?.code,
+      details: errCommande?.details,
+      hint: errCommande?.hint,
+    });
+    return NextResponse.json({
+      error: errCommande?.message || 'Erreur insertion commande',
+      code: errCommande?.code,
+      hint: errCommande?.hint,
+    }, { status: 500 });
   }
 
   const commandeId = commande.id;
+  console.log('[commande] ✅ Commande insérée:', { commandeId, numero });
 
   // 2. INSERT lignes
   const lignes = produits.map(p => ({
@@ -143,13 +177,20 @@ export async function POST(req: NextRequest) {
     total_ligne_ht: p.total_ligne_ht,
   }));
 
+  console.log('[commande] INSERT commandes_lignes:', lignes.length, 'lignes');
   const { error: errLignes } = await supabase
     .from('commandes_lignes')
     .insert(lignes);
 
   if (errLignes) {
-    console.error('[commande] Erreur insertion lignes :', errLignes.message);
-    // Commande créée mais lignes en erreur — on continue quand même
+    console.error('[commande] ❌ Erreur insertion lignes:', {
+      message: errLignes.message,
+      code: errLignes.code,
+      details: errLignes.details,
+      hint: errLignes.hint,
+    });
+  } else {
+    console.log('[commande] ✅ Lignes insérées');
   }
 
   // 3. INSERT notification

@@ -284,13 +284,16 @@ export default function CataloguePage() {
         remise_pct: remisePct,
         total_apres_remise_ht: totalFinal,
       };
+      console.log('[commande] Envoi payload:', payload);
       const res = await fetch('/api/commande', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      console.log('[commande] Réponse:', { status: res.status, data });
       if (!res.ok || !data.success) {
+        console.error('[commande] Erreur:', data);
         setCommandeError(data.error || 'Erreur lors de l\'envoi');
         return;
       }
