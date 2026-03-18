@@ -29,7 +29,7 @@ const MAX_CHARS = 6000;
 
 /**
  * POST /api/pricing/mercuriale
- * action=parse  → Parse Excel + Claude API → return products
+ * action=parse  → Parse Excel + Gemini API → return products
  * action=import → Insert parsed products into Supabase
  */
 export async function POST(req: NextRequest) {
@@ -63,7 +63,7 @@ async function handleParse(req: NextRequest) {
   console.log('[mercuriale] Fichier reçu:', file.name, file.size, 'bytes');
   const isLargeFile = file.size > 2 * 1024 * 1024; // > 2MB
 
-  // 1. Parse Excel → CSV text (léger, pas de binaire vers Claude)
+  // 1. Parse Excel → CSV text (léger, pas de binaire vers Gemini)
   const buffer = await file.arrayBuffer();
   let csvText: string;
   let totalRows = 0;
@@ -92,14 +92,14 @@ async function handleParse(req: NextRequest) {
 
     console.log('[mercuriale] Feuilles:', allSheets.map(s => `${s.feuille}(${s.nbRows} lignes)`).join(', '));
 
-    // Merge sheets into one CSV text for Claude
+    // Merge sheets into one CSV text for Gemini
     if (allSheets.length === 1) {
       csvText = allSheets[0].csv;
     } else {
       csvText = allSheets.map(s => `=== Feuille: ${s.feuille} ===\n${s.csv}`).join('\n\n');
     }
 
-    console.log('[mercuriale] CSV text:', csvText.length, 'chars pour Claude');
+    console.log('[mercuriale] CSV text:', csvText.length, 'chars pour Gemini');
   } catch (err) {
     console.error('[mercuriale] Erreur parsing Excel:', err);
     return NextResponse.json({ error: 'Impossible de lire le fichier Excel' }, { status: 400 });
@@ -109,22 +109,22 @@ async function handleParse(req: NextRequest) {
     return NextResponse.json({ error: 'Fichier vide' }, { status: 400 });
   }
 
-  // 2. Send CSV text to Claude API (pas de binaire)
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // 2. Send CSV text to Gemini API (pas de binaire)
+  const apiKey = process.env.GEMINI_API_KEY;
   console.log('[mercuriale] API Key present:', !!apiKey, 'length:', apiKey?.length);
   if (!apiKey) {
-    console.error('[mercuriale] ANTHROPIC_API_KEY manquante');
-    return NextResponse.json({ error: 'Clé API Claude non configurée' }, { status: 500 });
+    console.error('[mercuriale] GEMINI_API_KEY manquante');
+    return NextResponse.json({ error: 'Clé API Gemini non configurée' }, { status: 500 });
   }
 
   try {
     const textToSend = csvText.slice(0, MAX_CHARS);
-    console.log('[mercuriale] Envoi à Claude API:', textToSend.length, 'chars (tronqué de', csvText.length, '),', totalRows, 'lignes totales');
+    console.log('[mercuriale] Envoi à Gemini API:', textToSend.length, 'chars (tronqué de', csvText.length, '),', totalRows, 'lignes totales');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000); // 25s max
 
-    const geminiRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}', {
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,9 +147,9 @@ async function handleParse(req: NextRequest) {
 
     const geminiData = await geminiRes.json();
     const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log('[mercuriale] Réponse Claude:', responseText.length, 'chars');
+    console.log('[mercuriale] Réponse Gemini:', responseText.length, 'chars');
 
-    // Parse JSON from Claude response — expects { fournisseur_nom, fournisseur_email, produits: [...] }
+    // Parse JSON from Gemini response — expects { fournisseur_nom, fournisseur_email, produits: [...] }
     let produits: ProduitParse[];
     let fournisseurNomDetecte: string | null = null;
     let fournisseurEmailDetecte: string | null = null;
@@ -174,10 +174,10 @@ async function handleParse(req: NextRequest) {
         produits = JSON.parse(arrMatch[0]);
       }
     } catch (parseErr) {
-      console.error('[mercuriale] Erreur parsing réponse Claude:', parseErr);
+      console.error('[mercuriale] Erreur parsing réponse Gemini:', parseErr);
       console.error('[mercuriale] Réponse brute:', responseText.slice(0, 500));
       return NextResponse.json({
-        error: 'Impossible de parser la réponse de Claude',
+        error: 'Impossible de parser la réponse de Gemini',
         raw_response: responseText.slice(0, 1000),
       }, { status: 500 });
     }
@@ -221,7 +221,7 @@ async function handleParse(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      console.error('[mercuriale] Timeout Claude API (25s)');
+      console.error('[mercuriale] Timeout Gemini API (25s)');
       return NextResponse.json({ error: 'Timeout — le fichier est trop volumineux. Réessayez avec un fichier plus petit.' }, { status: 504 });
     }
     const errObj = err as Record<string, unknown>;
