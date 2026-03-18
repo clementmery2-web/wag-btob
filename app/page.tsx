@@ -313,8 +313,9 @@ export default function CataloguePage() {
   // ─── Quantity Selector Component ──────────────────────────────
   function QuantitySelector({ productId, pcb, prixUnit }: { productId: string; pcb: number; prixUnit: number }) {
     const qty = panier[productId] ?? 0;
-    const unites = qty * pcb;
+    const totalLigne = qty * pcb * prixUnit;
     const [inputVal, setInputVal] = useState(String(qty));
+    const isUnit = pcb === 1;
 
     // Sync input when external qty changes
     useEffect(() => { setInputVal(String(qty)); }, [qty]);
@@ -322,24 +323,22 @@ export default function CataloguePage() {
     function handleBlur() {
       const parsed = parseInt(inputVal, 10);
       if (!parsed || parsed < 1) {
-        updateCartons(productId, 0); // remove
+        updateCartons(productId, 0);
       } else {
         updateCartons(productId, parsed);
       }
     }
 
-    const isUnitMode = pcb === 1;
-
     return (
       <div>
-        <div className="flex items-stretch rounded-lg border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
           <button
             onClick={() => updateCartons(productId, qty - 1)}
-            className="bg-gray-100 hover:bg-gray-200 px-3 py-2 text-gray-700 font-bold text-sm transition-colors"
+            className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors"
           >
             &minus;
           </button>
-          <div className="flex-1 bg-white border-x border-gray-200 flex items-center justify-center">
+          <div className="text-center flex-1">
             <input
               type="text"
               inputMode="numeric"
@@ -347,23 +346,22 @@ export default function CataloguePage() {
               onChange={e => setInputVal(e.target.value.replace(/[^0-9]/g, ''))}
               onBlur={handleBlur}
               onKeyDown={e => { if (e.key === 'Enter') handleBlur(); }}
-              className="w-12 text-center border border-gray-300 rounded py-1 font-semibold text-sm focus:border-green-500 focus:outline-none"
+              className="w-16 text-center font-bold text-lg border-none bg-transparent focus:outline-none"
             />
+            <span className="text-xs text-gray-500 block -mt-1">
+              {isUnit ? `unité${qty > 1 ? 's' : ''}` : `carton${qty > 1 ? 's' : ''}`}
+            </span>
           </div>
           <button
             onClick={() => updateCartons(productId, qty + 1)}
-            className="bg-green-700 hover:bg-green-800 px-3 py-2 text-white font-bold text-sm transition-colors"
+            className="bg-green-600 hover:bg-green-700 text-white rounded px-3 py-1 font-bold text-sm transition-colors"
           >
             +
           </button>
         </div>
-        <p className="text-center text-xs text-gray-500 mt-1">
-          {isUnitMode
-            ? `${unites} unité${unites > 1 ? 's' : ''}`
-            : `${qty} carton${qty > 1 ? 's' : ''} · ${unites} unités`
-          }
-          {' — '}{formatEur(prixUnit)} HT/unité
-        </p>
+        <div className="text-center text-green-700 font-bold text-lg mt-1">
+          {formatEur(totalLigne)} HT
+        </div>
       </div>
     );
   }
@@ -568,6 +566,14 @@ export default function CataloguePage() {
                         </p>
                       )}
 
+                      {/* Prix carton / unité */}
+                      <p className="text-sm text-gray-500 text-center mb-3">
+                        {pcb > 1
+                          ? `Carton de ${pcb} — ${formatEur(prixUnit * pcb)} HT / carton`
+                          : `Vendu à l'unité — ${formatEur(prixUnit)} HT / unité`
+                        }
+                      </p>
+
                       {/* CTA / Sélecteur */}
                       <div className="mt-auto">
                         {cartonsInPanier > 0 ? (
@@ -575,7 +581,7 @@ export default function CataloguePage() {
                         ) : (
                           <button
                             onClick={() => addToPanier(p)}
-                            className="w-full bg-green-700 hover:bg-green-800 text-white font-semibold py-3 rounded-lg transition-colors"
+                            className="w-full bg-green-700 hover:bg-green-800 text-white font-semibold py-3 rounded-lg transition-colors text-base"
                           >
                             Ajouter au panier
                           </button>
@@ -635,23 +641,30 @@ export default function CataloguePage() {
                 const nomNorm = normalizeName(item.nom);
                 const marqueNorm = normalizeName(item.marque);
                 const pcb = num(item.pcb) || 1;
-                const isUnitMode = pcb === 1;
+                const isUnit = pcb === 1;
 
                 return (
                   <div key={item.id} className="bg-gray-50 rounded-lg p-3">
                     <div className="flex items-start gap-3">
-                      <div className={`w-10 h-10 ${hasPhoto ? 'bg-white' : ph.bg} rounded flex items-center justify-center flex-shrink-0`}>
+                      <div className={`w-12 h-12 ${hasPhoto ? 'bg-white' : ph.bg} rounded flex items-center justify-center flex-shrink-0`}>
                         {hasPhoto ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.photo_url!} alt={nomNorm} className="w-full h-full object-contain rounded" />
                         ) : (
-                          <span className="text-lg">{ph.emoji}</span>
+                          <span className="text-xl">{ph.emoji}</span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{nomNorm}</p>
+                        <p className="text-sm font-bold text-gray-900 truncate">{nomNorm}</p>
                         <p className="text-xs text-gray-500">{marqueNorm}</p>
                       </div>
+                      <button
+                        onClick={() => updateCartons(item.id, 0)}
+                        className="text-gray-400 hover:text-red-500 text-sm flex-shrink-0 p-1 transition-colors"
+                        title="Supprimer"
+                      >
+                        &#x1F5D1;&#xFE0F;
+                      </button>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-1">
@@ -661,11 +674,8 @@ export default function CataloguePage() {
                         >
                           &minus;
                         </button>
-                        <span className="text-sm font-semibold px-2 min-w-[60px] text-center">
-                          {isUnitMode
-                            ? `${item.nbUnites} unité${item.nbUnites > 1 ? 's' : ''}`
-                            : `${item.nbCartons} crt${item.nbCartons > 1 ? 's' : ''}`
-                          }
+                        <span className="text-sm font-semibold px-2 min-w-[50px] text-center">
+                          {item.nbCartons}
                         </span>
                         <button
                           onClick={() => updateCartons(item.id, item.nbCartons + 1)}
@@ -673,14 +683,12 @@ export default function CataloguePage() {
                         >
                           +
                         </button>
+                        <span className="text-xs text-gray-500 ml-1">
+                          {isUnit ? `unité${item.nbCartons > 1 ? 's' : ''}` : `carton${item.nbCartons > 1 ? 's' : ''}`}
+                        </span>
                       </div>
-                      <span className="text-sm font-bold text-gray-900">{formatEur(item.total)} HT</span>
+                      <span className="text-sm font-bold text-green-700">{formatEur(item.total)} HT</span>
                     </div>
-                    {!isUnitMode && (
-                      <p className="text-[11px] text-gray-400 mt-1">
-                        {item.nbCartons} carton{item.nbCartons > 1 ? 's' : ''} ({item.nbUnites} unités) — {formatEur(num(item.prix_wag_ht))}/unité
-                      </p>
-                    )}
                   </div>
                 );
               })}
@@ -688,7 +696,7 @@ export default function CataloguePage() {
 
             {/* Résumé + 3 paliers + formulaire */}
             <div className="border-t border-gray-200 p-4 space-y-3">
-              {/* Récap commande */}
+              {/* Récap totaux */}
               <div className="space-y-1">
                 <div className="flex justify-between text-sm text-gray-700">
                   <span>Sous-total HT</span>
@@ -696,7 +704,7 @@ export default function CataloguePage() {
                 </div>
                 {remiseAppliquee && (
                   <div className="flex justify-between text-sm text-green-700">
-                    <span className="font-medium">Remise fidélité -3%</span>
+                    <span className="font-medium">Remise -3%</span>
                     <span className="font-semibold">-{formatEur(montantRemise)}</span>
                   </div>
                 )}
@@ -711,7 +719,7 @@ export default function CataloguePage() {
                       <span>{formatEur(tvaFinal)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-500 font-medium">
-                      <span>Total TTC estimé</span>
+                      <span>Total TTC</span>
                       <span>{formatEur(totalFinal + tvaFinal)}</span>
                     </div>
                   </>
@@ -813,6 +821,26 @@ export default function CataloguePage() {
                     onChange={e => setNote(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none resize-none"
                   />
+                  {/* Récap commande épuré */}
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
+                    {panierItems.map(item => {
+                      const pcb = num(item.pcb) || 1;
+                      const isUnit = pcb === 1;
+                      return (
+                        <div key={item.id} className="flex justify-between text-xs text-gray-700">
+                          <span className="truncate flex-1 mr-2">
+                            {normalizeName(item.nom)} — {item.nbCartons} {isUnit ? `unité${item.nbCartons > 1 ? 's' : ''}` : `carton${item.nbCartons > 1 ? 's' : ''}`}
+                            {pcb > 1 && <span className="text-gray-400"> ({item.nbUnites} unités)</span>}
+                          </span>
+                          <span className="font-medium whitespace-nowrap">{formatEur(item.total)} HT</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between text-xs font-bold text-gray-900 border-t border-gray-200 pt-1 mt-1">
+                      <span>Total HT</span>
+                      <span>{formatEur(totalFinal)}</span>
+                    </div>
+                  </div>
                   {commandeError && (
                     <p className="text-xs text-red-600 text-center">{commandeError}</p>
                   )}
