@@ -1,13 +1,17 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { DEMO_CATALOGUE, CATEGORIES } from './lib/catalogue-data';
+import { CATEGORIES } from './lib/catalogue-data';
 import type { CatalogueProduit } from './lib/catalogue-data';
 
 const SEUIL_COMMANDE = 500;
 
 export default function CataloguePage() {
   const [categorie, setCategorie] = useState<string>('Tout');
+  const [produits, setProduits] = useState<CatalogueProduit[]>([]);
+  const [allProduits, setAllProduits] = useState<CatalogueProduit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState<string>('');
   const [panier, setPanier] = useState<Record<string, number>>({});
   const [panierOpen, setPanierOpen] = useState(false);
   const [commandeOpen, setCommandeOpen] = useState(false);
@@ -15,19 +19,39 @@ export default function CataloguePage() {
   const [telephone, setTelephone] = useState('');
   const [commandeEnvoyee, setCommandeEnvoyee] = useState(false);
 
-  const produits = useMemo(() => {
-    if (categorie === 'Tout') return DEMO_CATALOGUE;
-    return DEMO_CATALOGUE.filter(p => p.categorie === categorie);
-  }, [categorie]);
+  const fetchProduits = useCallback(async (cat: string) => {
+    setLoading(true);
+    try {
+      const params = cat && cat !== 'Tout' ? `?categorie=${encodeURIComponent(cat)}` : '';
+      const res = await fetch(`/api/catalogue${params}`);
+      const data = await res.json();
+      setProduits(data.produits ?? []);
+      setSource(data.source ?? '');
+      // Store full list on first load for panier lookups
+      if (cat === 'Tout') setAllProduits(data.produits ?? []);
+    } catch {
+      setProduits([]);
+      setSource('erreur');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProduits(categorie);
+  }, [categorie, fetchProduits]);
 
   const panierItems = useMemo(() => {
+    const lookup = allProduits.length > 0 ? allProduits : produits;
     return Object.entries(panier)
       .filter(([, qty]) => qty > 0)
       .map(([id, qty]) => {
-        const p = DEMO_CATALOGUE.find(x => x.id === id)!;
+        const p = lookup.find(x => x.id === id);
+        if (!p) return null;
         return { ...p, qty, total: p.prix_wag_ht * qty };
-      });
-  }, [panier]);
+      })
+      .filter(Boolean) as (CatalogueProduit & { qty: number; total: number })[];
+  }, [panier, allProduits, produits]);
 
   const totalHT = panierItems.reduce((s, i) => s + i.total, 0);
   const nbArticles = panierItems.reduce((s, i) => s + i.qty, 0);
@@ -128,8 +152,24 @@ export default function CataloguePage() {
           ))}
         </div>
 
+        {/* Source indicator (dev) */}
+        {source && (
+          <p className="text-xs text-gray-400 mb-2">
+            Source : {source === 'supabase' ? '🟢 Supabase' : source === 'demo' ? '🟡 Données de démo' : '🔴 Erreur'}
+            {source === 'demo' && ' — configurez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY'}
+          </p>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div className="text-center py-16">
+            <div className="inline-block w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-gray-500 mt-2">Chargement du catalogue...</p>
+          </div>
+        )}
+
         {/* Grille produits */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-12">
+        {!loading && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-12">
           {produits.map(p => {
             const jours = joursRestants(p.ddm);
             const inPanier = panier[p.id] ?? 0;
@@ -213,9 +253,9 @@ export default function CataloguePage() {
               </div>
             );
           })}
-        </div>
+        </div>}
 
-        {produits.length === 0 && (
+        {!loading && produits.length === 0 && (
           <div className="text-center py-16">
             <p className="text-gray-500">Aucun produit dans cette catégorie pour le moment.</p>
           </div>
