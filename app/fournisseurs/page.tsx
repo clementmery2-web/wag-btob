@@ -1,7 +1,13 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+
+const CHANNELS = [
+  { id: 'whatsapp', icon: '📱', label: 'WhatsApp', placeholder: 'Votre numéro WhatsApp...' },
+  { id: 'email', icon: '📧', label: 'Email', placeholder: 'Votre email pro...' },
+  { id: 'telephone', icon: '📞', label: 'Téléphone', placeholder: 'Votre numéro de téléphone...' },
+] as const;
 
 export default function FournisseursPage() {
   const router = useRouter();
@@ -12,8 +18,30 @@ export default function FournisseursPage() {
   const [erreur, setErreur] = useState('');
   const [dragging, setDragging] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const fichierNom = fichier?.name ?? '';
   const canSubmit = contact.trim() && fichier && !loading;
+
+  // Animated placeholder rotation (only when no channel is manually selected)
+  useEffect(() => {
+    if (selectedChannel) return;
+    const interval = setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % CHANNELS.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [selectedChannel]);
+
+  // Auto-detect channel from input
+  const detectedChannel = contact.includes('@')
+    ? 'email'
+    : /\d{6,}/.test(contact.replace(/[\s\-.()]/g, ''))
+    ? 'whatsapp'
+    : null;
+
+  const activePlaceholder = selectedChannel
+    ? CHANNELS.find((c) => c.id === selectedChannel)!.placeholder
+    : CHANNELS[placeholderIndex].placeholder;
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -173,16 +201,42 @@ export default function FournisseursPage() {
             <h3 className="text-xl font-bold text-gray-900 text-center">Déposer mon offre maintenant</h3>
 
             <div>
-              <label htmlFor="contact" className="block text-sm font-medium text-gray-700 mb-1.5">Comment vous joindre&nbsp;?</label>
+              <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Comment vous joindre&nbsp;?</label>
+              <p className="text-xs text-gray-400 mb-2">On vous répond sur le même canal que vous utilisez</p>
               <input
                 id="contact"
                 type="text"
                 required
-                placeholder="Votre email ou numéro WhatsApp"
+                placeholder={activePlaceholder}
                 value={contact}
                 onChange={(e) => setContact(e.target.value)}
                 className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none text-base transition-all"
               />
+              {/* Channel selector */}
+              <div className="flex items-center gap-1 mt-2.5">
+                {CHANNELS.map((ch) => (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() => setSelectedChannel(selectedChannel === ch.id ? null : ch.id)}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                      (selectedChannel ?? detectedChannel) === ch.id
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    <span>{ch.icon}</span>
+                    {ch.label}
+                  </button>
+                ))}
+              </div>
+              {/* Auto-detection message */}
+              {detectedChannel && contact.trim() && (
+                <p className="text-xs font-medium mt-2 text-green-600">
+                  {detectedChannel === 'email' ? '📧 Nous vous répondrons par email' : '📱 Nous vous répondrons sur WhatsApp'}
+                </p>
+              )}
+              <p className="text-xs text-gray-400 mt-2">Pas de démarchage. On vous contacte uniquement pour répondre à votre listing.</p>
             </div>
 
             <div>
