@@ -133,7 +133,7 @@ async function handleParse(req: NextRequest) {
       signal: controller.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Analyse ce fichier mercuriale fournisseur.\nExtrais tous les produits en JSON.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nDDM format : YYYY-MM-DD ou null\nTVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
-        } }] }]
+        }] }]
       }),
     });
 
