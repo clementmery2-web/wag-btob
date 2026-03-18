@@ -189,35 +189,20 @@ async function handleImport(body: {
 
   console.log('[mercuriale] Import:', produits.length, 'produits pour', fournisseur_nom);
 
-  // Calculate WAG pricing for each product
-  const now = new Date().toISOString();
-  const rows = produits.map(p => {
-    const prixAchat = p.prix_achat_ht;
-    const margeMin = flux === 'stock_wag' ? 0.20 : flux === 'dropshipping' ? 0.15 : 0.10;
-    const prixVenteWag = Math.round((prixAchat / (1 - margeMin)) * 100) / 100;
-    const margeWag = prixVenteWag > 0 ? Math.round(((prixVenteWag - prixAchat) / prixVenteWag) * 10000) / 100 : 0;
-
-    return {
-      nom: p.nom,
-      marque: p.marque,
-      ean: p.ean || null,
-      contenance: p.poids ? `${p.poids}kg` : '',
-      categorie: p.tva === 5.5 ? 'Alimentaire' : 'Hygiène & Entretien',
-      prix_achat_ht: prixAchat,
-      prix_vente_wag_ht: prixVenteWag,
-      marge_wag_pct: margeWag,
-      stock_disponible: p.stock,
-      flux: flux === 'stock_wag' ? 'entrepot' : flux,
-      dluo: p.ddm || null,
-      tva_taux: p.tva,
-      qmc: p.pcb,
-      pcb: p.pcb,
-      visible_catalogue: false,
-      statut: 'a_traiter',
-      photo_statut: 'non_trouvee',
-      created_at: now,
-    };
-  });
+  // Build insert rows using only valid produits columns
+  const rows = produits.map(p => ({
+    nom: p.nom,
+    marque: p.marque,
+    ean: p.ean || null,
+    prix_achat_ht: p.prix_achat_ht,
+    stock: p.stock,
+    flux: flux === 'stock_wag' ? 'entrepot' : flux,
+    ddm: p.ddm || null,
+    tva: p.tva,
+    pcb: p.pcb,
+    visible_catalogue: false,
+    photo_statut: 'non_trouvee',
+  }));
 
   const { data, error } = await supabase
     .from('produits')
