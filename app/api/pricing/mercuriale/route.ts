@@ -198,7 +198,7 @@ async function handleImport(body: {
     stock_disponible: p.stock,
     conditionnement: p.pcb,
     flux: flux === 'stock_wag' ? 'entrepot' : flux,
-    dluo: p.ddm || null,
+    dluo: p.ddm ? new Date(p.ddm).toISOString().split('T')[0] : null,
     tva_taux: p.tva,
     visible_catalogue: false,
     statut: 'en_attente',
