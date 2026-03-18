@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
+// Vercel Pro: extend timeout to 30s (default is 10s)
+export const maxDuration = 30;
+
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -92,33 +95,55 @@ async function handleParse(req: NextRequest) {
   }
 
   console.log('[mercuriale] Fichier reçu:', file.name, file.size, 'bytes');
+  const isLargeFile = file.size > 2 * 1024 * 1024; // > 2MB
 
-  // 1. Parse Excel → raw data
+  // 1. Parse Excel → CSV text (léger, pas de binaire vers Claude)
   const buffer = await file.arrayBuffer();
-  let rawData: Record<string, unknown>[];
+  let csvText: string;
+  let totalRows = 0;
+  let colonnes: string[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    rawData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-    console.log('[mercuriale] Lignes parsées:', rawData.length);
-    if (rawData.length > 0) {
-      console.log('[mercuriale] Colonnes:', Object.keys(rawData[0]).join(', '));
+
+    const allSheets: { feuille: string; csv: string; nbRows: number }[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      totalRows += Math.max(0, rows.length - 1); // exclude header
+      const sample = rows.slice(0, 201); // header + 200 lignes max
+      const sheetCsv = sample
+        .map((r: unknown[]) => r.map(c => String(c ?? '').replace(/,/g, ';')).join(','))
+        .join('\n');
+      allSheets.push({ feuille: sheetName, csv: sheetCsv, nbRows: rows.length });
+
+      // Extract column names from first sheet header
+      if (colonnes.length === 0 && rows.length > 0) {
+        colonnes = (rows[0] as unknown[]).map(c => String(c ?? ''));
+      }
     }
+
+    console.log('[mercuriale] Feuilles:', allSheets.map(s => `${s.feuille}(${s.nbRows} lignes)`).join(', '));
+
+    // Merge sheets into one CSV text for Claude
+    if (allSheets.length === 1) {
+      csvText = allSheets[0].csv;
+    } else {
+      csvText = allSheets.map(s => `=== Feuille: ${s.feuille} ===\n${s.csv}`).join('\n\n');
+    }
+
+    console.log('[mercuriale] CSV text:', csvText.length, 'chars pour Claude');
   } catch (err) {
     console.error('[mercuriale] Erreur parsing Excel:', err);
     return NextResponse.json({ error: 'Impossible de lire le fichier Excel' }, { status: 400 });
   }
 
-  if (rawData.length === 0) {
+  if (totalRows === 0) {
     return NextResponse.json({ error: 'Fichier vide' }, { status: 400 });
   }
 
-  // Limit to 200 rows for Claude
-  const dataForClaude = rawData.slice(0, 200);
-  const colonnes = Object.keys(rawData[0]);
-
-  // 2. Send to Claude API for intelligent parsing
+  // 2. Send CSV text to Claude API (pas de binaire)
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[mercuriale] ANTHROPIC_API_KEY manquante');
@@ -126,8 +151,11 @@ async function handleParse(req: NextRequest) {
   }
 
   try {
-    const dataText = JSON.stringify(dataForClaude, null, 0);
-    console.log('[mercuriale] Envoi à Claude API:', dataForClaude.length, 'lignes,', dataText.length, 'chars');
+    const truncNote = totalRows > 200 ? `\n⚠️ Fichier tronqué : ${totalRows} lignes totales, seules les 200 premières par feuille sont incluses.` : '';
+    console.log('[mercuriale] Envoi à Claude API:', csvText.length, 'chars,', totalRows, 'lignes totales');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000); // 25s max
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -136,15 +164,18 @@ async function handleParse(req: NextRequest) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: 4000,
         messages: [{
           role: 'user',
-          content: `${CLAUDE_PROMPT}\n\nNom du fichier: ${file.name}\nColonnes du fichier: ${colonnes.join(', ')}\n\nDonnées (${dataForClaude.length} lignes):\n${dataText}`,
+          content: `${CLAUDE_PROMPT}\n\nNom du fichier: ${file.name}\nColonnes détectées: ${colonnes.join(', ')}${truncNote}\n\nDonnées CSV:\n${csvText}`,
         }],
       }),
     });
+
+    clearTimeout(timeout);
 
     if (!claudeRes.ok) {
       const errText = await claudeRes.text();
@@ -212,10 +243,14 @@ async function handleParse(req: NextRequest) {
 
     console.log('[mercuriale] Produits valides:', cleanProduits.length, '| Alertes:', alertes);
 
+    if (isLargeFile) {
+      alertes.push('Fichier volumineux — analyse limitée aux 200 premières lignes par feuille');
+    }
+
     return NextResponse.json({
       success: true,
       produits: cleanProduits,
-      nb_total: rawData.length,
+      nb_total: totalRows,
       nb_parses: cleanProduits.length,
       colonnes,
       alertes,
@@ -223,6 +258,10 @@ async function handleParse(req: NextRequest) {
       fournisseur_email: fournisseurEmailDetecte,
     });
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.error('[mercuriale] Timeout Claude API (25s)');
+      return NextResponse.json({ error: 'Timeout — le fichier est trop volumineux. Réessayez avec un fichier plus petit.' }, { status: 504 });
+    }
     console.error('[mercuriale] Erreur générale:', err);
     return NextResponse.json({ error: 'Erreur lors de l\'analyse' }, { status: 500 });
   }
