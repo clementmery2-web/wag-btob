@@ -32,6 +32,7 @@ export interface CatalogueProduit {
   fournisseur_nom: string | null;   // nom fournisseur — grouper dans panier
   stock_disponible: number;
   pmc_type: 'gd' | 'pharma_bio' | 'estime';
+  tva_taux: number;                // TVA applicable (5.5 alimentaire, 20 non-alimentaire)
 }
 
 /** Emoji fallback par catégorie quand pas de photo */
@@ -137,7 +138,15 @@ function demoProd(base: {
     fournisseur_nom: base.fournisseur_nom ?? null,
     stock_disponible: base.stock_disponible,
     pmc_type: base.pmc_type,
+    tva_taux: tvaPourCategorie(base.categorie),
   };
+}
+
+/** TVA par catégorie : 5.5% alimentaire, 20% non-alimentaire */
+function tvaPourCategorie(cat: string): number {
+  const lc = cat.toLowerCase();
+  if (lc.includes('épicerie') || lc.includes('boisson') || lc.includes('bébé') || lc.includes('animaux')) return 5.5;
+  return 20;
 }
 
 export const DEMO_CATALOGUE: CatalogueProduit[] = [

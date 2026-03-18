@@ -7,20 +7,29 @@ const SEUIL_COMMANDE = 500;
 const PALIER_PRIORITAIRE = 1500;
 const PALIER_REMISE = 2500;
 const REMISE_FIDELITE = 0.03;
-const TVA_RATE = 0.20;
 const PRODUCTS_PER_PAGE = 12;
 
-// ─── Filtres orientés métier ──────────────────────────────────
+// ─── 7 filtres métier ──────────────────────────────────────
 const FILTRES = [
-  { id: 'tout', label: 'Tout', emoji: '📋', description: '' },
-  { id: 'top_marges', label: 'Top marges', emoji: '🏆', description: 'Nos produits les plus rentables' },
-  { id: 'epicerie', label: 'Épicerie & Boissons', emoji: '🛒', description: '' },
-  { id: 'hygiene_entretien', label: 'Hygiène & Entretien', emoji: '🧴', description: '' },
-  { id: 'dernieres_unites', label: 'Dernières unités', emoji: '⚡', description: 'Stock < 300 unités' },
-  { id: 'nouveautes', label: 'Nouveautés', emoji: '🆕', description: 'Arrivés cette semaine' },
+  { id: 'tout', label: 'Tout', emoji: '📦' },
+  { id: 'meilleures_marges', label: 'Meilleures marges', emoji: '💰' },
+  { id: 'grandes_marques', label: 'Grandes marques', emoji: '🏷️' },
+  { id: 'epicerie', label: 'Épicerie', emoji: '🛒' },
+  { id: 'hygiene_entretien', label: 'Hygiène & Entretien', emoji: '🧴' },
+  { id: 'petits_prix', label: 'Petits prix', emoji: '🔖' },
+  { id: 'stock_urgent', label: 'Stock urgent', emoji: '⚡' },
 ] as const;
 
 type FiltreId = (typeof FILTRES)[number]['id'];
+
+const GRANDES_MARQUES = [
+  'petit navire', 'calvé', 'calve', 'colgate', 'lipton',
+  'elephant', 'maille', 'rio mare', 'oral-b', 'oral b',
+  'fa', 'mir', 'wc net', 'génie', 'genie', 'carolin',
+  'chanteclair', 'nair', 'kleenex', 'signal', 'bonduelle',
+  'gerblé', 'gerble', 'tropicana', 'bledina', 'blédina', 'brasses',
+  'pampers', 'le chat', 'le petit marseillais', 'natessance', 'parmentier',
+];
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -54,23 +63,15 @@ function normalizeName(name: string): string {
   return name;
 }
 
-/** Category background + text color for products without photo */
-function categoryPlaceholder(cat: string): { bg: string; textColor: string; label: string } {
+/** Category placeholder: emoji + colors */
+function categoryPlaceholder(cat: string): { bg: string; emoji: string } {
   const lc = cat.toLowerCase();
-  if (lc.includes('épicerie') || lc.includes('boisson')) return { bg: 'bg-green-50', textColor: 'text-green-700', label: cat };
-  if (lc.includes('hygiène') || lc.includes('beauté')) return { bg: 'bg-blue-50', textColor: 'text-blue-700', label: cat };
-  if (lc.includes('entretien')) return { bg: 'bg-yellow-50', textColor: 'text-yellow-700', label: cat };
-  if (lc.includes('bébé')) return { bg: 'bg-pink-50', textColor: 'text-pink-700', label: cat };
-  if (lc.includes('animaux')) return { bg: 'bg-orange-50', textColor: 'text-orange-700', label: cat };
-  return { bg: 'bg-gray-50', textColor: 'text-gray-700', label: cat };
-}
-
-/** Extract brand initials (e.g. "Petit Navire" → "PN") */
-function brandInitials(marque: string): string {
-  if (!marque) return '?';
-  const words = marque.trim().split(/\s+/);
-  if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
-  return words.slice(0, 3).map(w => w[0]).join('').toUpperCase();
+  if (lc.includes('épicerie') || lc.includes('boisson')) return { bg: 'bg-emerald-50', emoji: '🥫' };
+  if (lc.includes('hygiène') || lc.includes('beauté')) return { bg: 'bg-sky-50', emoji: '🧴' };
+  if (lc.includes('entretien')) return { bg: 'bg-amber-50', emoji: '🧹' };
+  if (lc.includes('bébé')) return { bg: 'bg-pink-50', emoji: '🍼' };
+  if (lc.includes('animaux')) return { bg: 'bg-orange-50', emoji: '🐾' };
+  return { bg: 'bg-gray-50', emoji: '📦' };
 }
 
 /** Score composite pour tri par défaut */
@@ -87,25 +88,26 @@ function cartonsRestants(p: CatalogueProduit): number {
   return Math.floor(num(p.stock_disponible) / pcb);
 }
 
-/** Prix de revente estimé (×1.50 arrondi au 0.10€ supérieur) */
-function prixReventeEstime(prixWagHt: number): number {
-  const raw = prixWagHt * 1.50 * (1 + TVA_RATE);
-  return Math.ceil(raw * 10) / 10;
+/** Prix de revente estimé TTC (×1.50 arrondi psychologique) */
+function prixReventeEstime(prixWagHt: number, tvaTaux: number): number {
+  const tvaMult = 1 + tvaTaux / 100;
+  const raw = prixWagHt * 1.50 * tvaMult;
+  return Math.ceil(raw * 10) / 10 - 0.01;
 }
 
-/** Marge estimée */
-function margeEstimee(prixWagHt: number): number {
-  const revente = prixReventeEstime(prixWagHt);
-  const coutTTC = prixWagHt * (1 + TVA_RATE);
+/** Marge estimée correcte */
+function margeEstimee(prixWagHt: number, tvaTaux: number): number {
+  const tvaMult = 1 + tvaTaux / 100;
+  const revente = prixReventeEstime(prixWagHt, tvaTaux);
+  const coutTTC = prixWagHt * tvaMult;
   if (revente <= 0) return 0;
   return Math.round(((revente - coutTTC) / revente) * 100);
 }
 
-function isRecent(createdAt: string | undefined): boolean {
-  if (!createdAt) return false;
-  const ts = new Date(createdAt).getTime();
-  if (isNaN(ts)) return false;
-  return (Date.now() - ts) < 7 * 86400000;
+/** Truncate brand for placeholder (max 12 chars) */
+function truncBrand(marque: string): string {
+  const norm = normalizeName(marque);
+  return norm.length > 12 ? norm.slice(0, 12) + '…' : norm;
 }
 
 // Extend CatalogueProduit to optionally have created_at from API
@@ -113,12 +115,21 @@ interface ProduitAvecDate extends CatalogueProduit {
   created_at?: string;
 }
 
+function isGrandeMarque(p: ProduitAvecDate): boolean {
+  return GRANDES_MARQUES.some(m => p.marque.toLowerCase().includes(m));
+}
+
 function filtrerEtTrier(produits: ProduitAvecDate[], filtre: FiltreId): ProduitAvecDate[] {
   let result = [...produits];
 
-  if (filtre === 'top_marges') {
-    result = result.filter(p => num(p.marge_retail_estimee) > 45);
-    result.sort((a, b) => num(b.marge_retail_estimee) - num(a.marge_retail_estimee));
+  if (filtre === 'meilleures_marges') {
+    result.sort((a, b) => num(b.remise_pct) - num(a.remise_pct));
+    return result;
+  }
+
+  if (filtre === 'grandes_marques') {
+    result = result.filter(isGrandeMarque);
+    result.sort((a, b) => scoreProduit(b) - scoreProduit(a));
     return result;
   }
 
@@ -132,21 +143,15 @@ function filtrerEtTrier(produits: ProduitAvecDate[], filtre: FiltreId): ProduitA
     result = result.filter(p => cats.includes(p.categorie));
   }
 
-  if (filtre === 'dernieres_unites') {
-    result = result.filter(p => num(p.stock_disponible) < 300);
-    result.sort((a, b) => num(a.stock_disponible) - num(b.stock_disponible));
+  if (filtre === 'petits_prix') {
+    result = result.filter(p => num(p.prix_wag_ht) < 2.00);
+    result.sort((a, b) => num(a.prix_wag_ht) - num(b.prix_wag_ht));
     return result;
   }
 
-  if (filtre === 'nouveautes') {
-    const recents = result.filter(p => isRecent(p.created_at));
-    if (recents.length > 0) {
-      result = recents;
-    } else {
-      // Fallback: les 12 derniers ajoutés (par id décroissant si pas de date)
-      result.sort((a, b) => (b.created_at ?? b.id).localeCompare(a.created_at ?? a.id));
-      result = result.slice(0, 12);
-    }
+  if (filtre === 'stock_urgent') {
+    result = result.filter(p => num(p.stock_disponible) < 300);
+    result.sort((a, b) => num(a.stock_disponible) - num(b.stock_disponible));
     return result;
   }
 
@@ -218,7 +223,6 @@ export default function CataloguePage() {
       .filter(Boolean) as (CatalogueProduit & { nbCartons: number; nbUnites: number; total: number })[];
   }, [panier, allProduits]);
 
-  const totalCartons = panierItems.reduce((s, i) => s + i.nbCartons, 0);
   const totalArticles = panierItems.length;
   const totalHT = panierItems.reduce((s, i) => s + i.total, 0);
   const remiseAppliquee = totalHT >= PALIER_REMISE;
@@ -226,6 +230,16 @@ export default function CataloguePage() {
   const totalFinal = totalHT - montantRemise;
   const seuilAtteint = totalHT >= SEUIL_COMMANDE;
   const prioritaireAtteint = totalHT >= PALIER_PRIORITAIRE;
+
+  // TVA estimée (moyenne pondérée des TVA du panier)
+  const tvaEstimee = useMemo(() => {
+    if (panierItems.length === 0) return 0;
+    return panierItems.reduce((s, item) => {
+      const tva = num(item.tva_taux) || 5.5;
+      return s + item.total * (tva / 100);
+    }, 0);
+  }, [panierItems]);
+  const tvaFinal = remiseAppliquee ? tvaEstimee * (1 - REMISE_FIDELITE) : tvaEstimee;
 
   function addToPanier(p: CatalogueProduit) {
     setPanier(prev => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + 1 }));
@@ -253,6 +267,64 @@ export default function CataloguePage() {
   const pct500 = (SEUIL_COMMANDE / PALIER_REMISE) * 100;
   const pct1500 = (PALIER_PRIORITAIRE / PALIER_REMISE) * 100;
 
+  // ─── Quantity Selector Component ──────────────────────────────
+  function QuantitySelector({ productId, pcb, prixUnit }: { productId: string; pcb: number; prixUnit: number }) {
+    const qty = panier[productId] ?? 0;
+    const unites = qty * pcb;
+    const [inputVal, setInputVal] = useState(String(qty));
+
+    // Sync input when external qty changes
+    useEffect(() => { setInputVal(String(qty)); }, [qty]);
+
+    function handleBlur() {
+      const parsed = parseInt(inputVal, 10);
+      if (!parsed || parsed < 1) {
+        updateCartons(productId, 0); // remove
+      } else {
+        updateCartons(productId, parsed);
+      }
+    }
+
+    const isUnitMode = pcb === 1;
+
+    return (
+      <div>
+        <div className="flex items-stretch rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => updateCartons(productId, qty - 1)}
+            className="bg-gray-100 hover:bg-gray-200 px-3 py-2 text-gray-700 font-bold text-sm transition-colors"
+          >
+            &minus;
+          </button>
+          <div className="flex-1 bg-white border-x border-gray-200 flex items-center justify-center">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={inputVal}
+              onChange={e => setInputVal(e.target.value.replace(/[^0-9]/g, ''))}
+              onBlur={handleBlur}
+              onKeyDown={e => { if (e.key === 'Enter') handleBlur(); }}
+              className="w-12 text-center border border-gray-300 rounded py-1 font-semibold text-sm focus:border-green-500 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={() => updateCartons(productId, qty + 1)}
+            className="bg-green-700 hover:bg-green-800 px-3 py-2 text-white font-bold text-sm transition-colors"
+          >
+            +
+          </button>
+        </div>
+        <p className="text-center text-xs text-gray-500 mt-1">
+          {isUnitMode
+            ? `${unites} unité${unites > 1 ? 's' : ''}`
+            : `${qty} carton${qty > 1 ? 's' : ''} · ${unites} unités`
+          }
+          {' — '}{formatEur(prixUnit)} HT/unité
+        </p>
+      </div>
+    );
+  }
+
   // ─── Render ─────────────────────────────────────────────────
 
   return (
@@ -278,7 +350,7 @@ export default function CataloguePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
             </svg>
             <span className="hidden sm:inline">Panier</span>
-            {totalCartons > 0 && (
+            {totalArticles > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {totalArticles}
               </span>
@@ -378,18 +450,18 @@ export default function CataloguePage() {
               {visibleProduits.map(p => {
                 const cartonsInPanier = panier[p.id] ?? 0;
                 const pcb = num(p.pcb) || 1;
-                const unitesInPanier = cartonsInPanier * pcb;
                 const prixUnit = num(p.prix_wag_ht);
                 const placeholder = categoryPlaceholder(p.categorie);
                 const hasPhoto = p.photo_url && (p.photo_statut === 'validee' || p.photo_statut === 'upload_manuel' || p.photo_statut === 'auto_trouvee');
                 const cartons = cartonsRestants(p);
                 const jours = joursRestants(p.ddm);
+                const tvaTaux = num(p.tva_taux) || 5.5;
 
                 const nomNorm = normalizeName(p.nom);
-                const revente = prixReventeEstime(prixUnit);
+                const revente = prixReventeEstime(prixUnit, tvaTaux);
                 const marge = num(p.marge_retail_estimee) > 0
                   ? Math.round(num(p.marge_retail_estimee))
-                  : margeEstimee(prixUnit);
+                  : margeEstimee(prixUnit, tvaTaux);
 
                 return (
                   <div key={p.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -411,9 +483,9 @@ export default function CataloguePage() {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.photo_url!} alt={nomNorm} className="w-full h-full object-contain p-2" />
                       ) : (
-                        <div className="flex flex-col items-center">
-                          <span className={`text-2xl font-black ${placeholder.textColor}`}>{brandInitials(p.marque)}</span>
-                          <span className="text-xs text-gray-400 mt-1">{placeholder.label}</span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-4xl">{placeholder.emoji}</span>
+                          <span className="text-sm font-bold text-gray-600">{truncBrand(p.marque)}</span>
                         </div>
                       )}
                     </div>
@@ -424,7 +496,7 @@ export default function CataloguePage() {
                       <h3 className="text-sm text-gray-600 mb-1 leading-snug line-clamp-2">{nomNorm}</h3>
 
                       {/* DDM courte — seulement si < 60 jours */}
-                      {jours !== null && jours < 60 && (
+                      {jours !== null && jours > 0 && jours < 60 && (
                         <span className="inline-block bg-orange-100 text-orange-700 text-xs font-medium px-2 py-0.5 rounded-full mb-2 w-fit">
                           Prix cassé — DDM courte
                         </span>
@@ -438,7 +510,7 @@ export default function CataloguePage() {
                         </div>
                         <div className="flex justify-between items-baseline">
                           <span className="text-sm text-gray-600">Vous revendez</span>
-                          <span className="font-semibold text-green-700">~{formatEur(revente)}</span>
+                          <span className="font-semibold text-green-700">~{formatEur(revente)} TTC</span>
                         </div>
                         <div className="flex justify-between items-baseline pt-1 border-t border-green-200">
                           <span className="text-sm font-bold text-green-800">Votre marge</span>
@@ -446,8 +518,8 @@ export default function CataloguePage() {
                         </div>
                       </div>
 
-                      {/* Dernieres unites badge on card */}
-                      {filtre === 'dernieres_unites' && cartons > 0 && (
+                      {/* Stock urgent badge on card */}
+                      {filtre === 'stock_urgent' && cartons > 0 && (
                         <p className="text-xs text-orange-600 font-medium mb-2">
                           {cartons} carton{cartons > 1 ? 's' : ''} restant{cartons > 1 ? 's' : ''}
                         </p>
@@ -456,30 +528,7 @@ export default function CataloguePage() {
                       {/* CTA / Sélecteur */}
                       <div className="mt-auto">
                         {cartonsInPanier > 0 ? (
-                          <div>
-                            <div className="flex items-stretch rounded-lg border border-gray-200 overflow-hidden">
-                              <button
-                                onClick={() => updateCartons(p.id, cartonsInPanier - 1)}
-                                className="bg-gray-100 hover:bg-gray-200 px-3 py-2 text-gray-700 font-bold text-sm transition-colors"
-                              >
-                                &minus;
-                              </button>
-                              <div className="flex-1 bg-white border-x border-gray-200 px-2 py-2 text-center">
-                                <p className="text-sm font-semibold text-gray-900">
-                                  {cartonsInPanier} carton{cartonsInPanier > 1 ? 's' : ''} &middot; {unitesInPanier} unités
-                                </p>
-                              </div>
-                              <button
-                                onClick={() => updateCartons(p.id, cartonsInPanier + 1)}
-                                className="bg-green-700 hover:bg-green-800 px-3 py-2 text-white font-bold text-sm transition-colors"
-                              >
-                                +
-                              </button>
-                            </div>
-                            <p className="text-center text-xs text-gray-500 mt-1">
-                              {formatEur(prixUnit)} HT par unité
-                            </p>
-                          </div>
+                          <QuantitySelector productId={p.id} pcb={pcb} prixUnit={prixUnit} />
                         ) : (
                           <button
                             onClick={() => addToPanier(p)}
@@ -542,6 +591,8 @@ export default function CataloguePage() {
                 const hasPhoto = item.photo_url && (item.photo_statut === 'validee' || item.photo_statut === 'upload_manuel' || item.photo_statut === 'auto_trouvee');
                 const nomNorm = normalizeName(item.nom);
                 const marqueNorm = normalizeName(item.marque);
+                const pcb = num(item.pcb) || 1;
+                const isUnitMode = pcb === 1;
 
                 return (
                   <div key={item.id} className="bg-gray-50 rounded-lg p-3">
@@ -551,7 +602,7 @@ export default function CataloguePage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.photo_url!} alt={nomNorm} className="w-full h-full object-contain rounded" />
                         ) : (
-                          <span className={`text-xs font-black ${ph.textColor}`}>{brandInitials(item.marque)}</span>
+                          <span className="text-lg">{ph.emoji}</span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -568,7 +619,10 @@ export default function CataloguePage() {
                           &minus;
                         </button>
                         <span className="text-sm font-semibold px-2 min-w-[60px] text-center">
-                          {item.nbCartons} crt{item.nbCartons > 1 ? 's' : ''}
+                          {isUnitMode
+                            ? `${item.nbUnites} unité${item.nbUnites > 1 ? 's' : ''}`
+                            : `${item.nbCartons} crt${item.nbCartons > 1 ? 's' : ''}`
+                          }
                         </span>
                         <button
                           onClick={() => updateCartons(item.id, item.nbCartons + 1)}
@@ -579,9 +633,11 @@ export default function CataloguePage() {
                       </div>
                       <span className="text-sm font-bold text-gray-900">{formatEur(item.total)} HT</span>
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      {item.nbCartons} carton{item.nbCartons > 1 ? 's' : ''} ({item.nbUnites} unités) — {formatEur(num(item.prix_wag_ht))}/unité
-                    </p>
+                    {!isUnitMode && (
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        {item.nbCartons} carton{item.nbCartons > 1 ? 's' : ''} ({item.nbUnites} unités) — {formatEur(num(item.prix_wag_ht))}/unité
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -589,88 +645,105 @@ export default function CataloguePage() {
 
             {/* Résumé + 3 paliers + formulaire */}
             <div className="border-t border-gray-200 p-4 space-y-3">
-              <div className="flex justify-between text-sm font-semibold text-gray-900">
-                <span>Sous-total HT</span>
-                <span>{formatEur(totalHT)}</span>
-              </div>
-
-              {/* Remise fidélité appliquée */}
-              {remiseAppliquee && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-700 font-medium">Remise -3% appliquée</span>
-                  <span className="text-green-700 font-semibold">-{formatEur(montantRemise)}</span>
+              {/* Récap commande */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm text-gray-700">
+                  <span>Sous-total HT</span>
+                  <span className="font-semibold">{formatEur(totalHT)}</span>
                 </div>
-              )}
-              {remiseAppliquee && (
-                <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-100 pt-2">
+                {remiseAppliquee && (
+                  <div className="flex justify-between text-sm text-green-700">
+                    <span className="font-medium">Remise fidélité -3%</span>
+                    <span className="font-semibold">-{formatEur(montantRemise)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-200 pt-1">
                   <span>Total HT</span>
                   <span>{formatEur(totalFinal)}</span>
                 </div>
-              )}
+                {totalHT > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>TVA estimée</span>
+                      <span>{formatEur(tvaFinal)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 font-medium">
+                      <span>Total TTC estimé</span>
+                      <span>{formatEur(totalFinal + tvaFinal)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* Barre de progression 3 paliers */}
-              <div className="space-y-2">
-                <div className="relative w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      remiseAppliquee ? 'bg-green-500' : prioritaireAtteint ? 'bg-blue-500' : seuilAtteint ? 'bg-green-500' : 'bg-red-400'
-                    }`}
-                    style={{ width: `${progressPct}%` }}
-                  />
-                  {/* Markers */}
-                  <div className="absolute top-0 h-full w-0.5 bg-white" style={{ left: `${pct500}%` }} />
-                  <div className="absolute top-0 h-full w-0.5 bg-white" style={{ left: `${pct1500}%` }} />
-                </div>
+              {totalHT > 0 && (
+                <div className="space-y-2">
+                  <div className="relative w-full h-3 bg-gray-200 rounded-full">
+                    <div
+                      className="h-full rounded-full transition-all duration-300 bg-green-600"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                    {/* Markers — cercles sur la barre */}
+                    {[
+                      { pct: pct500, reached: seuilAtteint },
+                      { pct: pct1500, reached: prioritaireAtteint },
+                      { pct: 100, reached: remiseAppliquee },
+                    ].map((m, i) => (
+                      <div
+                        key={i}
+                        className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 flex items-center justify-center text-[8px] font-bold ${
+                          m.reached
+                            ? 'bg-green-600 border-green-700 text-white'
+                            : 'bg-white border-gray-300 text-gray-400'
+                        }`}
+                        style={{ left: `${m.pct}%`, transform: 'translate(-50%, -50%)' }}
+                      >
+                        {m.reached ? '✓' : ''}
+                      </div>
+                    ))}
+                  </div>
 
-                {/* Palier labels */}
-                <div className="flex justify-between text-[10px]">
-                  <div className={`flex items-center gap-0.5 ${seuilAtteint ? 'text-green-600' : 'text-gray-400'}`}>
-                    {seuilAtteint ? <span>&#10003;</span> : null}
-                    <span>500&nbsp;€</span>
+                  {/* Palier labels */}
+                  <div className="flex justify-between text-[10px]">
+                    <span className={seuilAtteint ? 'text-green-600 font-medium' : 'text-gray-400'}>500 €</span>
+                    <span className={prioritaireAtteint ? 'text-green-600 font-medium' : 'text-gray-400'}>1 500 €</span>
+                    <span className={remiseAppliquee ? 'text-green-600 font-medium' : 'text-gray-400'}>2 500 €</span>
                   </div>
-                  <div className={`flex items-center gap-0.5 ${prioritaireAtteint ? 'text-blue-600' : 'text-gray-400'}`}>
-                    {prioritaireAtteint ? <span>&#10003;</span> : null}
-                    <span>1&nbsp;500&nbsp;€</span>
-                  </div>
-                  <div className={`flex items-center gap-0.5 ${remiseAppliquee ? 'text-green-600' : 'text-gray-400'}`}>
-                    {remiseAppliquee ? <span>&#10003;</span> : null}
-                    <span>2&nbsp;500&nbsp;€</span>
-                  </div>
-                </div>
 
-                {/* Palier messages */}
-                <div className="space-y-1">
-                  {!seuilAtteint && totalHT > 0 && (
-                    <p className="text-xs text-red-600">
-                      Il manque {formatEur(SEUIL_COMMANDE - totalHT)} pour valider la commande
-                    </p>
+                  {/* Palier messages */}
+                  {!seuilAtteint && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <p className="text-xs text-red-700">
+                        Il manque <strong>{formatEur(SEUIL_COMMANDE - totalHT)}</strong> HT pour valider votre commande
+                      </p>
+                    </div>
                   )}
                   {seuilAtteint && !prioritaireAtteint && (
-                    <>
-                      <p className="text-xs text-green-600 font-medium">&#10003; Commande minimum atteinte</p>
-                      <p className="text-xs text-gray-500">
-                        Plus que {formatEur(PALIER_PRIORITAIRE - totalHT)} pour la livraison prioritaire
+                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 space-y-1">
+                      <p className="text-xs text-green-700 font-medium">&#10003; Commande validée !</p>
+                      <p className="text-xs text-gray-600">
+                        Ajoutez <strong>{formatEur(PALIER_PRIORITAIRE - totalHT)}</strong> HT pour débloquer la livraison prioritaire sous 3 jours
                       </p>
-                    </>
+                    </div>
                   )}
                   {prioritaireAtteint && !remiseAppliquee && (
-                    <>
-                      <p className="text-xs text-blue-600 font-medium">&#x1F680; Livraison prioritaire débloquée !</p>
-                      <p className="text-xs text-gray-500">
-                        Plus que {formatEur(PALIER_REMISE - totalHT)} pour débloquer -3% sur cette commande
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 space-y-1">
+                      <p className="text-xs text-blue-700 font-medium">&#x1F680; Livraison prioritaire débloquée !</p>
+                      <p className="text-xs text-gray-600">
+                        Plus que <strong>{formatEur(PALIER_REMISE - totalHT)}</strong> HT pour obtenir -3% sur toute la commande
                       </p>
-                    </>
+                    </div>
                   )}
                   {remiseAppliquee && (
-                    <>
-                      <p className="text-xs text-blue-600 font-medium">&#x1F680; Livraison prioritaire sous 3j</p>
-                      <p className="text-xs text-green-700 font-medium">
-                        &#x1F3AF; Remise -3% appliquée — vous économisez {formatEur(montantRemise)} !
+                    <div className="bg-green-100 border border-green-300 rounded-lg px-3 py-2 space-y-1 animate-pulse">
+                      <p className="text-xs text-green-800 font-bold">
+                        &#x1F3AF; Remise -3% appliquée ! Vous économisez {formatEur(montantRemise)} HT sur cette commande
                       </p>
-                    </>
+                      <p className="text-xs text-blue-700 font-medium">&#x1F680; Livraison prioritaire sous 3j</p>
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
 
               {/* Formulaire commande — visible dès 500€ */}
               {seuilAtteint && !commandeEnvoyee && (
@@ -700,7 +773,7 @@ export default function CataloguePage() {
                   />
                   <button
                     type="submit"
-                    className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-lg transition-colors text-base"
+                    className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-lg transition-colors text-lg"
                   >
                     Envoyer ma commande &rarr;
                   </button>
@@ -717,7 +790,7 @@ export default function CataloguePage() {
                 </div>
               )}
 
-              {!seuilAtteint && totalCartons > 0 && (
+              {!seuilAtteint && totalArticles > 0 && (
                 <p className="text-xs text-gray-400 text-center">
                   Ajoutez {formatEur(SEUIL_COMMANDE - totalHT)} HT pour pouvoir commander.
                 </p>
@@ -788,7 +861,7 @@ export default function CataloguePage() {
       </footer>
 
       {/* Bouton panier sticky mobile */}
-      {totalCartons > 0 && !panierOpen && (
+      {totalArticles > 0 && !panierOpen && (
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 z-40">
           <button
             onClick={() => setPanierOpen(true)}
