@@ -23,7 +23,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const allowedFields = ['statut', 'prix_vente_wag_ht', 'pmc_ttc_gd', 'pmc_ht', 'pmc_statut', 'k_dluo', 'scenario'];
+  const allowedFields = ['statut', 'prix_vente_wag_ht', 'pmc_ttc_gd', 'pmc_ht', 'pmc_statut', 'k_dluo', 'scenario', 'prix_achat_wag_ht'];
 
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {

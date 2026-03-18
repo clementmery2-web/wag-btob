@@ -34,6 +34,8 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [sliderModifiedManually, setSliderModifiedManually] = useState(false);
   const [pmcTtcSaisi, setPmcTtcSaisi] = useState<Record<string, number>>({});
+  const [pmcTtcStr, setPmcTtcStr] = useState<Record<string, string>>({});
+  const [prixAchatSaisi, setPrixAchatSaisi] = useState<Record<string, number>>({});
 
   // Fetch products from API
   useEffect(() => {
@@ -68,7 +70,10 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   const current = produits[currentIndex];
   const treated = produits.filter(p => p.statut !== 'a_traiter').length;
 
-  // CORRECTION 6 — Calcul cascade
+  // Prix d'achat effectif (saisi manuellement ou depuis Supabase)
+  const prixAchat = prixAchatSaisi[current?.id ?? ''] ?? (current?.prix_achat_wag_ht || 0);
+
+  // Calcul cascade
   const pmcTtc = pmcTtcSaisi[current?.id ?? ''] ?? (current?.pmc_ttc_gd || 0);
   const tva = current?.tva_taux || 5.5;
   const pmcHtCalcule = useMemo(() => {
@@ -89,22 +94,27 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   }, [current?.flux, dluo_jours]);
 
   const coeffFlux = current?.flux === 'entrepot' ? 1.20 : current?.flux === 'transit' ? 1.25 : 1.15;
-  const prixMin = (current?.prix_achat_wag_ht || 0) * coeffFlux;
+  const prixMin = prixAchat * coeffFlux;
 
   const scenarioCalcule = useMemo(() => {
     if (!pmcHtCalcule || pmcHtCalcule === 0) return null;
-    if (!current?.prix_achat_wag_ht || current.prix_achat_wag_ht === 0) return null;
+    if (!prixAchat || prixAchat === 0) return null;
     const ref = pmcHtCalcule * kDlouCalcule;
     if (ref === 0) return null;
-    const ratio = current.prix_achat_wag_ht / ref;
+    const ratio = prixAchat / ref;
     if (ratio < 0.20) return { code: 'A', prixVente: pmcHtCalcule * 0.40 };
     if (ratio < 0.43) return { code: 'B', prixVente: pmcHtCalcule * 0.48 };
     if (ratio < 0.50) return { code: 'C', prixVente: (pmcHtCalcule * 0.48) / 1.15 };
     return { code: 'D', prixVente: null };
-  }, [pmcHtCalcule, current?.prix_achat_wag_ht, kDlouCalcule]);
+  }, [pmcHtCalcule, prixAchat, kDlouCalcule]);
 
   const prixVenteFinal = scenarioCalcule?.prixVente
     ? Math.max(scenarioCalcule.prixVente, prixMin)
+    : null;
+
+  // Prix d'achat suggéré (limite scénario B)
+  const prixAchatSuggere = prixAchat === 0 && pmcHtCalcule && pmcHtCalcule > 0
+    ? Math.round(pmcHtCalcule * kDlouCalcule * 0.43 * 100) / 100
     : null;
 
   // Auto-set slider when prixVenteFinal changes and slider not manually modified
@@ -115,12 +125,12 @@ export function TraitementClient({ offreId }: { offreId: string }) {
   }, [prixVenteFinal, sliderModifiedManually]);
 
   const prixVente = sliderValue ?? prixVenteFinal ?? current?.prix_vente_wag_ht ?? 0;
-  const margeWag = current ? calculerMargeWag(current.prix_achat_wag_ht, prixVente) : 0;
+  const margeWag = prixAchat > 0 ? calculerMargeWag(prixAchat, prixVente) : 0;
   const remiseGd = pmcHtCalcule && pmcHtCalcule > 0 ? calculerRemiseVsGd(prixVente, pmcHtCalcule) : 0;
   const joursDdm = current ? joursRestantsDdm(current.ddm) : 0;
   const sc = scenarioCalcule ? SCENARIO_CONFIG[scenarioCalcule.code] : null;
 
-  // CORRECTION 3 — handleAction with PATCH
+  // handleAction with PATCH
   const handleAction = useCallback((action: Produit['statut']) => {
     if (!current) return;
     setProduits(prev => prev.map((p, i) => i === currentIndex ? { ...p, statut: action } : p));
@@ -136,6 +146,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
         pmc_statut: pmcTtcSaisi[current.id] ? 'valide' : 'manuel_requis',
         k_dluo: kDlouCalcule,
         scenario: scenarioCalcule?.code || null,
+        prix_achat_wag_ht: prixAchatSaisi[current.id] || null,
       }),
     }).catch(err => console.error('[traitement] PATCH failed:', err));
 
@@ -144,7 +155,7 @@ export function TraitementClient({ offreId }: { offreId: string }) {
     if (currentIndex < produits.length - 1) {
       setCurrentIndex(prev => prev + 1);
     }
-  }, [current, currentIndex, produits.length, sliderValue, prixVenteFinal, pmcTtcSaisi, pmcHtCalcule, kDlouCalcule, scenarioCalcule]);
+  }, [current, currentIndex, produits.length, sliderValue, prixVenteFinal, pmcTtcSaisi, pmcHtCalcule, kDlouCalcule, scenarioCalcule, prixAchatSaisi]);
 
   // Reset slider manual flag on index change
   useEffect(() => {
@@ -252,22 +263,10 @@ export function TraitementClient({ offreId }: { offreId: string }) {
         </div>
       )}
 
-      {/* Main content - split layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Card produit (40%) */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          {/* Photo */}
-          <div className="bg-gray-100 rounded-lg h-40 flex items-center justify-center">
-            {current.photo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={current.photo_url} alt={current.nom} className="w-full h-full object-contain rounded-lg" />
-            ) : (
-              <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M18 13.5a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            )}
-          </div>
-
+      {/* Main content - 2 columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Colonne gauche — Infos produit */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900">{current.nom}</h3>
             <p className="text-sm text-gray-500">{current.marque}</p>
@@ -290,39 +289,58 @@ export function TraitementClient({ offreId }: { offreId: string }) {
           </div>
         </div>
 
-        {/* Panel pricing (60%) */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Prix et scénario */}
+        {/* Colonne droite — Pricing */}
+        <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase mb-1">Prix achat WAG HT</p>
-                {current.prix_achat_wag_ht > 0 ? (
-                  <p className="text-2xl font-bold text-gray-900">{formatEur(current.prix_achat_wag_ht)}</p>
-                ) : (
-                  <p className="text-sm text-orange-500">Prix d&apos;achat manquant</p>
-                )}
-              </div>
-
-              {/* CORRECTION 5 — Champ PMC TTC */}
-              <div>
-                <label className="text-xs font-medium text-gray-400 uppercase block mb-1">PMC TTC Grande Distribution (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="3.49"
-                  value={pmcTtcSaisi[current.id] ?? (current.pmc_ttc_gd || '')}
-                  onChange={e => setPmcTtcSaisi(prev => ({ ...prev, [current.id]: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-                />
-                {pmcTtc > 0 && pmcHtCalcule !== null && (
-                  <p className="text-xs text-gray-500 mt-1">PMC HT : {pmcHtCalcule.toFixed(2)} €</p>
-                )}
-              </div>
+            {/* PMC TTC input */}
+            <div>
+              <label className="text-xs font-medium text-gray-400 uppercase block mb-1">PMC TTC Grande Distribution (€)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="3.49"
+                value={pmcTtcStr[current.id] ?? (current.pmc_ttc_gd ? String(current.pmc_ttc_gd) : '')}
+                onChange={e => {
+                  const str = e.target.value.replace(',', '.');
+                  setPmcTtcStr(prev => ({ ...prev, [current.id]: str }));
+                  setPmcTtcSaisi(prev => ({ ...prev, [current.id]: parseFloat(str) || 0 }));
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+              />
+              {pmcTtc > 0 && pmcHtCalcule !== null && (
+                <p className="text-xs text-gray-500 mt-1">PMC HT : {pmcHtCalcule.toFixed(2)} €</p>
+              )}
             </div>
 
-            {/* CORRECTION 7 — Scénario */}
+            {/* Prix achat WAG HT */}
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase mb-1">Prix achat WAG HT</p>
+              {prixAchat > 0 ? (
+                <p className="text-2xl font-bold text-gray-900">{formatEur(prixAchat)}</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-orange-500">Prix d&apos;achat manquant</p>
+                  {prixAchatSuggere !== null && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs text-amber-700">
+                        Prix d&apos;achat suggéré (limite scénario B) : <span className="font-bold">{formatEur(prixAchatSuggere)}</span> HT
+                      </p>
+                      <button
+                        onClick={() => {
+                          setPrixAchatSaisi(prev => ({ ...prev, [current.id]: prixAchatSuggere }));
+                          setSliderModifiedManually(false);
+                        }}
+                        className="mt-1.5 text-xs font-semibold text-amber-800 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded transition-colors"
+                      >
+                        Utiliser ce prix
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Scénario */}
             {pmcTtc === 0 && (
               <p className="text-sm text-gray-400">Saisir le PMC TTC pour calculer le scénario</p>
             )}
@@ -341,8 +359,8 @@ export function TraitementClient({ offreId }: { offreId: string }) {
               </div>
               <input
                 type="range"
-                min={current.prix_achat_wag_ht}
-                max={pmcHtCalcule || current.prix_achat_wag_ht * 3 || 10}
+                min={prixAchat}
+                max={pmcHtCalcule || prixAchat * 3 || 10}
                 step={0.01}
                 value={prixVente}
                 onChange={e => {
