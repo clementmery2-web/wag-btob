@@ -1,13 +1,7 @@
 'use client';
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-const CHANNELS = [
-  { id: 'whatsapp', icon: '📱', label: 'WhatsApp', placeholder: 'Votre numéro WhatsApp...' },
-  { id: 'email', icon: '📧', label: 'Email', placeholder: 'Votre email pro...' },
-  { id: 'telephone', icon: '📞', label: 'Téléphone', placeholder: 'Votre numéro de téléphone...' },
-] as const;
 
 export default function FournisseursPage() {
   const router = useRouter();
@@ -18,19 +12,8 @@ export default function FournisseursPage() {
   const [erreur, setErreur] = useState('');
   const [dragging, setDragging] = useState(false);
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const fichierNom = fichier?.name ?? '';
   const canSubmit = contact.trim() && fichier && !loading;
-
-  // Animated placeholder rotation (only when no channel is manually selected)
-  useEffect(() => {
-    if (selectedChannel) return;
-    const interval = setInterval(() => {
-      setPlaceholderIndex((prev) => (prev + 1) % CHANNELS.length);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [selectedChannel]);
 
   // Auto-detect channel from input
   const detectedChannel = contact.includes('@')
@@ -38,10 +21,6 @@ export default function FournisseursPage() {
     : /\d{6,}/.test(contact.replace(/[\s\-.()]/g, ''))
     ? 'whatsapp'
     : null;
-
-  const activePlaceholder = selectedChannel
-    ? CHANNELS.find((c) => c.id === selectedChannel)!.placeholder
-    : CHANNELS[placeholderIndex].placeholder;
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -101,10 +80,9 @@ export default function FournisseursPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* BANDEAU URGENCE */}
-      <div className="bg-green-700 text-white text-center text-sm py-2 px-4 font-medium">
-        <span className="inline-block w-2 h-2 bg-green-300 rounded-full mr-2 animate-pulse" />
-        Nous achetons en ce moment — Réponse garantie sous 24h
+      {/* BANDEAU EXCLUSIVITÉ */}
+      <div className="bg-gray-900 text-white text-center text-sm py-2 px-4 font-medium tracking-wide">
+        ✦ Plateforme réservée aux professionnels — Accès sur sélection
       </div>
 
       {/* HEADER */}
@@ -117,11 +95,12 @@ export default function FournisseursPage() {
             </svg>
             <div>
               <h1 className="text-xl font-bold text-gray-900 leading-tight">Willy <span className="text-green-600">Anti-gaspi</span></h1>
-              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Marketplace BtoB</span>
+              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Marketplace anti-gaspi BtoB</span>
+              <span className="inline-block text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full ml-1">🔒 Accès professionnel uniquement</span>
             </div>
           </Link>
           <button onClick={scrollToForm} className="hidden sm:inline-flex bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-            Déposer mon listing
+            Accès partenaire →
           </button>
         </div>
       </header>
@@ -134,9 +113,12 @@ export default function FournisseursPage() {
             <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">
               Vos surplus trouvent<br className="hidden sm:block" /> preneur en <span className="text-green-600">24h</span>
             </h2>
-            <p className="text-lg sm:text-xl text-gray-600 max-w-xl mx-auto mb-8">
+            <p className="text-lg sm:text-xl text-gray-600 max-w-xl mx-auto mb-4">
               On achète vos stocks proches DDM, surplus et déclassés.<br className="hidden sm:block" />
               Paiement garanti, zéro invendu.
+            </p>
+            <p className="text-sm text-gray-500 max-w-md mx-auto mb-8">
+              Nous travaillons avec un nombre limité de fournisseurs sélectionnés pour garantir la qualité de nos offres.
             </p>
 
             {/* STATS */}
@@ -195,48 +177,40 @@ export default function FournisseursPage() {
           </div>
         </div>
 
+        {/* BLOC EXCLUSIVITÉ */}
+        <div className="bg-gray-900 text-white rounded-2xl p-5 sm:p-6 mb-6 text-center">
+          <p className="text-sm font-semibold tracking-wide mb-2">✦ Vous êtes sélectionné</p>
+          <p className="text-sm text-gray-300 leading-relaxed max-w-md mx-auto">
+            Vous accédez à notre réseau privé de 300+ acheteurs BtoB (épiceries, magasins discount, grandes enseignes). Vos produits ne seront pas visibles publiquement.
+          </p>
+        </div>
+
         {/* FORMULAIRE */}
         <div id="formulaire" className="scroll-mt-24">
+          <p className="text-xs text-gray-500 text-center mb-3">
+            🔒 Vos produits sont présentés en exclusivité à nos acheteurs — aucune information n&apos;est partagée publiquement.
+          </p>
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 space-y-5">
-            <h3 className="text-xl font-bold text-gray-900 text-center">Déposer mon offre maintenant</h3>
+            <h3 className="text-xl font-bold text-gray-900 text-center">Déposer mon offre partenaire</h3>
 
             <div>
-              <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Comment vous joindre&nbsp;?</label>
-              <p className="text-xs text-gray-400 mb-2">On vous répond sur le même canal que vous utilisez</p>
+              <label htmlFor="contact" className="block text-base font-semibold text-gray-900 mb-0.5">Comment vous joindre&nbsp;?</label>
+              <p className="text-sm text-gray-500 mb-2">Email ou WhatsApp — on s&apos;adapte à vous</p>
               <input
                 id="contact"
                 type="text"
                 required
-                placeholder={activePlaceholder}
+                placeholder="votre@email.com ou 06 XX XX XX XX"
                 value={contact}
                 onChange={(e) => setContact(e.target.value)}
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none text-base transition-all"
+                className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none text-base text-gray-900 transition-all"
               />
-              {/* Channel selector */}
-              <div className="flex items-center gap-1 mt-2.5">
-                {CHANNELS.map((ch) => (
-                  <button
-                    key={ch.id}
-                    type="button"
-                    onClick={() => setSelectedChannel(selectedChannel === ch.id ? null : ch.id)}
-                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
-                      (selectedChannel ?? detectedChannel) === ch.id
-                        ? 'border-green-500 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    <span>{ch.icon}</span>
-                    {ch.label}
-                  </button>
-                ))}
-              </div>
               {/* Auto-detection message */}
               {detectedChannel && contact.trim() && (
                 <p className="text-xs font-medium mt-2 text-green-600">
                   {detectedChannel === 'email' ? '📧 Nous vous répondrons par email' : '📱 Nous vous répondrons sur WhatsApp'}
                 </p>
               )}
-              <p className="text-xs text-gray-400 mt-2">Pas de démarchage. On vous contacte uniquement pour répondre à votre listing.</p>
             </div>
 
             <div>
@@ -307,7 +281,7 @@ export default function FournisseursPage() {
             >
               {loading ? 'Envoi en cours...' : 'Envoyer mon listing →'}
             </button>
-            <p className="text-xs text-gray-400 text-center">🔒 Confidentiel &bull; Zéro engagement &bull; Réponse sous 24h garantie</p>
+            <p className="text-xs text-gray-400 text-center">✦ Réservé aux partenaires sélectionnés &bull; Réponse sous 24h</p>
           </form>
         </div>
 
