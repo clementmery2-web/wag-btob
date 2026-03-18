@@ -19,7 +19,7 @@ function groupByFournisseur(produits: any[]) {
   const groups = new Map<string, typeof produits>();
 
   for (const p of produits) {
-    const key = p.fournisseur_id || 'Inconnu';
+    const key = p.fournisseurs?.nom || p.fournisseur_id || 'Inconnu';
     const list = groups.get(key) ?? [];
     list.push(p);
     groups.set(key, list);
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data, error } = await supabase
         .from('produits')
-        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_wag_ht, prix_vente_wag_ht, pmc_ht, pmc_reference, pmc_statut, statut, fournisseur_id, created_at, visible_catalogue')
+        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_wag_ht, prix_vente_wag_ht, pmc_ht, pmc_reference, pmc_statut, statut, fournisseur_id, created_at, visible_catalogue, fournisseurs(nom)')
         .order('created_at', { ascending: false });
 
       if (error) {
