@@ -95,11 +95,17 @@ export async function GET(req: NextRequest) {
     try {
       const { data, error } = await supabase
         .from('produits')
-        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_ht, prix_vente_wag_ht, pmc_reference, pmc_type, pmc_fiabilite, pmc_statut, statut, fournisseur_nom, created_at, visible_catalogue')
+        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_ht, prix_vente_wag_ht, pmc_reference, pmc_type, pmc_fiabilite, pmc_statut, statut, fournisseur_nom, fournisseur_id, created_at, visible_catalogue')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (error) {
+        console.log('[offres] Fallback démo car: Supabase error:', error.message, error.code, error.details);
+      } else if (!data || data.length === 0) {
+        console.log('[offres] Fallback démo car: Supabase retourne 0 produits');
+      } else {
+        console.log('[offres] Offres Supabase:', data.length, data.slice(0, 3).map(p => ({ fournisseur_id: p.fournisseur_id, fournisseur_nom: p.fournisseur_nom })));
         let offres = groupByFournisseur(data);
+        console.log('[offres] Groupes fournisseurs:', offres.length, offres.map(o => o.fournisseur));
 
         if (statut) offres = offres.filter(o => o.statut === statut);
         if (urgence) offres = offres.filter(o => o.priorite === urgence);
@@ -108,8 +114,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ offres, source: 'supabase' });
       }
     } catch (err) {
-      console.error('[offres] Supabase error:', err);
+      console.error('[offres] Fallback démo car: exception Supabase:', err instanceof Error ? err.message : err);
     }
+  } else {
+    console.log('[offres] Fallback démo car: pas de client Supabase (variables manquantes)');
   }
 
   // Fallback demo
