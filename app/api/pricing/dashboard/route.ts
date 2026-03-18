@@ -26,7 +26,7 @@ export async function GET() {
     { data: notifications },
   ] = await Promise.all([
     supabase.from('produits').select('*', { count: 'exact', head: true }).eq('visible_catalogue', true),
-    supabase.from('produits').select('*', { count: 'exact', head: true }).lt('pmc_fiabilite', 3),
+    supabase.from('produits').select('*', { count: 'exact', head: true }).or('pmc_statut.is.null,pmc_statut.eq.manuel_requis'),
     supabase.from('produits').select('prix_achat_wag_ht, prix_vente_wag_ht, stock_disponible, statut, fournisseur_id, visible_catalogue'),
     supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20),
   ]);

@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getDemoKPIs, DEMO_ALERTES, DEMO_ACTIONS } from '../lib/demo-data';
 import { formatEur, formatPct } from '../lib/types';
 
 interface KPIs {
@@ -29,9 +28,9 @@ interface ActionData {
 }
 
 export function DashboardClient() {
-  const [kpis, setKpis] = useState<KPIs>(getDemoKPIs());
-  const [alertes, setAlertes] = useState<AlerteData[]>(DEMO_ALERTES);
-  const [actions, setActions] = useState<ActionData[]>(DEMO_ACTIONS.slice(0, 10));
+  const [kpis, setKpis] = useState<KPIs | null>(null);
+  const [alertes, setAlertes] = useState<AlerteData[]>([]);
+  const [actions, setActions] = useState<ActionData[]>([]);
   const [source, setSource] = useState<string>('');
   const [photosAVerifier, setPhotosAVerifier] = useState(0);
   const [pmcManuelRequis, setPmcManuelRequis] = useState(0);
@@ -45,8 +44,8 @@ export function DashboardClient() {
           setKpis(data.kpis);
           setPmcManuelRequis(data.kpis.pmc_manuel_requis ?? 0);
         }
-        if (data.alertes && data.alertes.length > 0) setAlertes(data.alertes);
-        if (data.activite && data.activite.length > 0) setActions(data.activite);
+        setAlertes(data.alertes ?? []);
+        setActions(data.activite ?? []);
         if (data.source) setSource(data.source);
       })
       .catch(() => {
@@ -61,6 +60,15 @@ export function DashboardClient() {
       })
       .catch(() => {});
   }, []);
+
+  if (!kpis) {
+    return (
+      <div className="text-center py-16">
+        <div className="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500 mt-2">Chargement du dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
