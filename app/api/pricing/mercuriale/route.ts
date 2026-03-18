@@ -204,6 +204,8 @@ async function handleImport(body: {
     photo_statut: 'non_trouvee',
   }));
 
+  console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
+
   const { data, error } = await supabase
     .from('produits')
     .insert(rows)
