@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data, error } = await supabase
         .from('produits')
-        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_wag_ht, prix_vente_wag_ht, pmc_reference, pmc_type, pmc_fiabilite, pmc_statut, statut, fournisseur_id, created_at, visible_catalogue')
+        .select('id, nom, marque, ean, categorie, contenance, stock_disponible, flux, dluo, prix_achat_wag_ht, prix_vente_wag_ht, pmc_ht, pmc_reference, pmc_statut, statut, fournisseur_id, created_at, visible_catalogue')
         .order('created_at', { ascending: false });
 
       if (error) {
