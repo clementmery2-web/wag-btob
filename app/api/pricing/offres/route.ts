@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifySession } from '@/app/pricing/lib/auth';
-import { DEMO_OFFRES } from '@/app/pricing/lib/demo-data';
 import { calculerScoreUrgence, getPriorite } from '@/app/pricing/lib/types';
 
 function getSupabase() {
@@ -99,32 +98,22 @@ export async function GET(req: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.log('[offres] Fallback démo car: Supabase error:', error.message, error.code, error.details);
-      } else if (!data || data.length === 0) {
-        console.log('[offres] Fallback démo car: Supabase retourne 0 produits');
-      } else {
-        console.log('[offres] Offres Supabase:', data.length, data.slice(0, 3).map(p => ({ fournisseur_id: p.fournisseur_id })));
-        let offres = groupByFournisseur(data);
-        console.log('[offres] Groupes fournisseurs:', offres.length, offres.map(o => o.fournisseur));
-
-        if (statut) offres = offres.filter(o => o.statut === statut);
-        if (urgence) offres = offres.filter(o => o.priorite === urgence);
-        offres.sort((a, b) => b.score_urgence - a.score_urgence);
-
-        return NextResponse.json({ offres, source: 'supabase' });
+        console.error('[offres] Supabase error:', error.message, error.code, error.details);
+        return NextResponse.json({ error: 'Erreur Supabase', details: error.message }, { status: 500 });
       }
+
+      let offres = groupByFournisseur(data ?? []);
+
+      if (statut) offres = offres.filter(o => o.statut === statut);
+      if (urgence) offres = offres.filter(o => o.priorite === urgence);
+      offres.sort((a, b) => b.score_urgence - a.score_urgence);
+
+      return NextResponse.json({ offres, source: 'supabase' });
     } catch (err) {
-      console.error('[offres] Fallback démo car: exception Supabase:', err instanceof Error ? err.message : err);
+      console.error('[offres] Exception Supabase:', err instanceof Error ? err.message : err);
+      return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
     }
-  } else {
-    console.log('[offres] Fallback démo car: pas de client Supabase (variables manquantes)');
   }
 
-  // Fallback demo
-  let offres = [...DEMO_OFFRES];
-  if (statut) offres = offres.filter(o => o.statut === statut);
-  if (urgence) offres = offres.filter(o => o.priorite === urgence);
-  offres.sort((a, b) => b.score_urgence - a.score_urgence);
-
-  return NextResponse.json({ offres, source: 'demo' });
+  return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
 }

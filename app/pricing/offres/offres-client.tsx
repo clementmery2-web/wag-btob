@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { DEMO_OFFRES } from '../lib/demo-data';
 import { formatEur } from '../lib/types';
 
 interface OffreData {
@@ -40,6 +39,7 @@ export function OffresClient() {
   const [offres, setOffres] = useState<OffreData[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
   const [filtrStatut, setFiltrStatut] = useState<string>('tous');
   const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -49,40 +49,11 @@ export function OffresClient() {
     fetch('/api/pricing/offres')
       .then(r => r.json())
       .then(data => {
-        if (data.offres) {
-          setOffres(data.offres);
-          setSource(data.source ?? 'supabase');
-        } else {
-          // Fallback to demo
-          setOffres(DEMO_OFFRES.map(o => ({
-            id: o.id,
-            fournisseur: o.fournisseur,
-            date_reception: o.date_reception,
-            nb_produits: o.nb_produits,
-            ddm_min: o.ddm_min,
-            valeur_estimee: o.valeur_estimee,
-            statut: o.statut,
-            assigne_a: o.assigne_a,
-            score_urgence: o.score_urgence,
-            priorite: o.priorite,
-          })));
-          setSource('demo');
-        }
+        setOffres(data.offres ?? []);
+        setSource(data.source ?? 'supabase');
       })
       .catch(() => {
-        setOffres(DEMO_OFFRES.map(o => ({
-          id: o.id,
-          fournisseur: o.fournisseur,
-          date_reception: o.date_reception,
-          nb_produits: o.nb_produits,
-          ddm_min: o.ddm_min,
-          valeur_estimee: o.valeur_estimee,
-          statut: o.statut,
-          assigne_a: o.assigne_a,
-          score_urgence: o.score_urgence,
-          priorite: o.priorite,
-        })));
-        setSource('demo');
+        setError('Impossible de charger les offres depuis Supabase');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -145,6 +116,12 @@ export function OffresClient() {
         <div className="text-center py-16">
           <div className="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-500 mt-2">Chargement des offres...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
