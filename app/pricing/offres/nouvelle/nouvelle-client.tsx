@@ -17,7 +17,18 @@ interface ProduitParse {
   poids: number | null;
 }
 
-type Etape = 'upload' | 'analyse' | 'preview' | 'import';
+type Etape = 'upload' | 'analyse' | 'mapping' | 'preview' | 'import';
+
+const MAPPING_FIELDS = [
+  { key: 'nom', label: 'Nom produit', required: true },
+  { key: 'prix', label: 'Prix achat WAG HT', required: true },
+  { key: 'ean', label: 'EAN', required: false },
+  { key: 'stock', label: 'Stock', required: false },
+  { key: 'ddm', label: 'DDM / DLUO', required: false },
+  { key: 'pcb', label: 'PCB / Colisage', required: false },
+  { key: 'marque', label: 'Marque', required: false },
+  { key: 'pmc_ht', label: 'PMC HT', required: false },
+] as const;
 
 export function NouvelleOffreClient() {
   const router = useRouter();
@@ -40,6 +51,10 @@ export function NouvelleOffreClient() {
   const [colonnes, setColonnes] = useState<string[]>([]);
   const [nbTotal, setNbTotal] = useState(0);
   const [importResult, setImportResult] = useState<{ nb_importes: number; fournisseur_nom: string } | null>(null);
+
+  // Mapping state
+  const [mapping, setMapping] = useState<Record<string, number | ''>>({});
+  const [autoMapping, setAutoMapping] = useState<Record<string, number>>({});
 
   // Editing state
   const [editCell, setEditCell] = useState<{ row: number; col: keyof ProduitParse } | null>(null);
@@ -69,13 +84,16 @@ export function NouvelleOffreClient() {
         return;
       }
 
-      setProduits(data.produits);
-      setAlertes(data.alertes || []);
       setColonnes(data.colonnes || []);
       setNbTotal(data.nb_total || 0);
       // Auto-fill fournisseur info from Claude detection
       if (data.fournisseur_nom) setFournisseur(data.fournisseur_nom);
-      setEtape('preview');
+      // Store auto-mapping and pre-fill user mapping
+      if (data.auto_mapping) {
+        setAutoMapping(data.auto_mapping);
+        setMapping(data.auto_mapping);
+      }
+      setEtape('mapping');
     } catch {
       setErreur('Erreur réseau. Veuillez réessayer.');
       setEtape('upload');
@@ -83,6 +101,56 @@ export function NouvelleOffreClient() {
       setLoading(false);
     }
   }, [fichier]);
+
+  // ── ÉTAPE 2.5: Confirm mapping & re-parse ──
+  const handleConfirmMapping = useCallback(async () => {
+    if (!fichier) return;
+
+    // Build clean mapping (only fields with a selected column)
+    const cleanMapping: Record<string, number> = {};
+    for (const [k, v] of Object.entries(mapping)) {
+      if (v !== '' && v !== undefined) cleanMapping[k] = v as number;
+    }
+
+    if (cleanMapping.nom === undefined || cleanMapping.prix === undefined) {
+      setErreur('Les champs "Nom produit" et "Prix achat WAG HT" sont obligatoires.');
+      return;
+    }
+
+    setErreur('');
+    setLoading(true);
+    setEtape('analyse');
+
+    try {
+      const formData = new FormData();
+      formData.append('fichier', fichier);
+      formData.append('columnMapping', JSON.stringify(cleanMapping));
+
+      const res = await fetch('/api/pricing/mercuriale', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setErreur(data.error || 'Erreur lors de l\'analyse');
+        setEtape('mapping');
+        return;
+      }
+
+      setProduits(data.produits);
+      setAlertes(data.alertes || []);
+      setNbTotal(data.nb_total || 0);
+      if (data.fournisseur_nom) setFournisseur(data.fournisseur_nom);
+      setEtape('preview');
+    } catch {
+      setErreur('Erreur réseau. Veuillez réessayer.');
+      setEtape('mapping');
+    } finally {
+      setLoading(false);
+    }
+  }, [fichier, mapping]);
 
   // ── ÉTAPE 3: Import into Supabase ──
   const handleImport = useCallback(async () => {
@@ -153,9 +221,9 @@ export function NouvelleOffreClient() {
 
       {/* Étapes indicator */}
       <div className="flex items-center gap-2 text-sm">
-        {(['upload', 'analyse', 'preview', 'import'] as Etape[]).map((e, i) => {
-          const labels = ['Upload', 'Analyse IA', 'Vérification', 'Import'];
-          const current = ['upload', 'analyse', 'preview', 'import'].indexOf(etape);
+        {(['upload', 'analyse', 'mapping', 'preview', 'import'] as Etape[]).map((e, i) => {
+          const labels = ['Upload', 'Analyse IA', 'Mapping colonnes', 'Vérification', 'Import'];
+          const current = ['upload', 'analyse', 'mapping', 'preview', 'import'].indexOf(etape);
           const step = i;
           return (
             <div key={e} className="flex items-center gap-2">
@@ -255,6 +323,77 @@ export function NouvelleOffreClient() {
           <p className="text-lg font-semibold text-gray-900">Analyse en cours...</p>
           <p className="text-sm text-gray-500 mt-2">Claude analyse votre mercuriale et extrait les produits.</p>
           <p className="text-xs text-gray-400 mt-1">Cela peut prendre 10 à 30 secondes.</p>
+        </div>
+      )}
+
+      {/* ═══ ÉTAPE 2.5: MAPPING COLONNES ═══ */}
+      {etape === 'mapping' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5 max-w-2xl">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Mapping des colonnes</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Vérifiez et ajustez la correspondance entre les colonnes du fichier et les champs attendus.
+            </p>
+          </div>
+
+          {/* Detected columns list */}
+          <div className="bg-gray-50 rounded-lg px-4 py-3">
+            <p className="text-xs font-medium text-gray-500 mb-1">Colonnes détectées dans le fichier :</p>
+            <div className="flex flex-wrap gap-1.5">
+              {colonnes.map((col, i) => (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs text-gray-700">
+                  <span className="text-gray-400 font-mono">{i}</span> {col}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Field mapping dropdowns */}
+          <div className="space-y-3">
+            {MAPPING_FIELDS.map(({ key, label, required }) => (
+              <div key={key} className="flex items-center gap-3">
+                <label className="w-44 text-sm text-gray-700 flex items-center gap-1.5">
+                  {label}
+                  {required && <span className="text-red-500 text-xs">*</span>}
+                </label>
+                <select
+                  value={mapping[key] ?? ''}
+                  onChange={e => setMapping(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                  className={`flex-1 px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-100 ${
+                    required && (mapping[key] === '' || mapping[key] === undefined)
+                      ? 'border-red-300 focus:border-red-400'
+                      : 'border-gray-300 focus:border-indigo-500'
+                  }`}
+                >
+                  <option value="">— Non mappé —</option>
+                  {colonnes.map((col, i) => (
+                    <option key={i} value={i}>{col}</option>
+                  ))}
+                </select>
+                {/* Show auto-detected badge */}
+                {autoMapping[key] !== undefined && mapping[key] === autoMapping[key] && (
+                  <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded whitespace-nowrap">auto</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-2">
+            <button
+              onClick={() => { setEtape('upload'); setMapping({}); }}
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              &larr; Recommencer
+            </button>
+            <button
+              onClick={handleConfirmMapping}
+              disabled={mapping.nom === '' || mapping.nom === undefined || mapping.prix === '' || mapping.prix === undefined}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+            >
+              Confirmer le mapping
+            </button>
+          </div>
         </div>
       )}
 

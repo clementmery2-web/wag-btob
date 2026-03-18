@@ -90,6 +90,11 @@ export async function POST(req: NextRequest) {
 async function handleParse(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get('fichier') as File | null;
+  const columnMappingStr = formData.get('columnMapping') as string | null;
+  let userMapping: Record<string, number> | null = null;
+  if (columnMappingStr) {
+    try { userMapping = JSON.parse(columnMappingStr); } catch { /* ignore */ }
+  }
 
   if (!file) {
     return NextResponse.json({ error: 'Fichier requis' }, { status: 400 });
@@ -104,6 +109,7 @@ async function handleParse(req: NextRequest) {
   let colonnes: string[] = [];
   const cleanProduits: ProduitParse[] = [];
   let fournisseurNomDetecte: string | null = null;
+  let autoMapping: Record<string, number> = {};
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -117,7 +123,9 @@ async function handleParse(req: NextRequest) {
       const headers = (rows[0] as unknown[]).map(c => String(c ?? '').trim());
       if (colonnes.length === 0) colonnes = headers;
 
-      const colMap = matchColumns(headers);
+      const autoMap = matchColumns(headers);
+      if (Object.keys(autoMapping).length === 0) autoMapping = autoMap;
+      const colMap = userMapping || autoMap;
       console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', JSON.stringify(colMap));
 
       // Try to detect supplier name from sheet name or first cell area
@@ -190,6 +198,7 @@ async function handleParse(req: NextRequest) {
     colonnes,
     alertes,
     fournisseur_nom: fournisseurNomDetecte,
+    auto_mapping: autoMapping,
   });
 }
 
