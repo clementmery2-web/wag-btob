@@ -184,9 +184,24 @@ export async function GET(req: NextRequest) {
             }
             const mapped = (data ?? []).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
             // Debug logs
-            console.log('[catalogue] PCB debug:', data?.slice(0, 3)?.map(p => ({
-              nom: (p.nom || '').slice(0, 30), qmc: p.qmc, pcb: p.pcb
-            })));
+            if (data && data[0]) {
+              const p = data[0];
+              const qmc = Math.max(1, parseInt(p.qmc, 10) || parseInt(p.pcb, 10) || 1);
+              const stockVal = parseInt(p.stock_disponible, 10) || 0;
+              const maxCart = Math.floor(stockVal / qmc);
+              console.log('[catalogue] Marge debug:', {
+                nom: p.nom?.slice(0, 30),
+                prix_wag_ht: p.prix_vente_wag_ht,
+                prix_revente_supabase: p.prix_revente_conseille_ttc,
+                marge_supabase: p.marge_retail_estimee,
+                tva: p.tva_taux,
+              });
+              console.log('[catalogue] Stock debug:', {
+                stock: p.stock_disponible,
+                pcb: p.qmc,
+                max_cartons: maxCart,
+              });
+            }
             console.log('[catalogue] Catégories:', [...new Set(mapped.map(p => p.categorie))]);
             return NextResponse.json({ produits: mapped, source: 'supabase' });
           }

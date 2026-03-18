@@ -98,9 +98,13 @@ function prixReventeAffiche(p: CatalogueProduit): number {
 
 /** Marge réelle en % */
 function margeReelle(p: CatalogueProduit): number {
+  // Priority 1: marge_retail_estimee from Supabase (already calculated at import)
+  const margeDb = num(p.marge_retail_estimee);
+  if (margeDb > 0) return Math.round(margeDb);
+
+  // Priority 2: calculate from prix_revente_conseille_ttc
   const prixWag = num(p.prix_wag_ht);
   const tvaTaux = num(p.tva_taux) || 5.5;
-
   if (p.prix_revente_conseille_ttc && p.prix_revente_conseille_ttc > 0) {
     const coutAchatTtc = prixWag * (1 + tvaTaux / 100);
     const reventeTtc = p.prix_revente_conseille_ttc;
