@@ -212,7 +212,6 @@ async function handleImport(body: {
       tva_taux: p.tva,
       qmc: p.pcb,
       pcb: p.pcb,
-      fournisseur_nom,
       visible_catalogue: false,
       statut: 'a_traiter',
       photo_statut: 'non_trouvee',
@@ -223,7 +222,7 @@ async function handleImport(body: {
   const { data, error } = await supabase
     .from('produits')
     .insert(rows)
-    .select('id, fournisseur_nom');
+    .select('id');
 
   if (error) {
     console.error('[mercuriale] Erreur INSERT:', error.message, error.code, error.details);
