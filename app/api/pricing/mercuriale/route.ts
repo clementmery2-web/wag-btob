@@ -50,8 +50,10 @@ function matchColumns(headers: string[]): Record<string, number> {
     if (idx !== -1) mapping[field] = idx;
   }
   // Match prix with priority: antigaspi > prix achat/pa ht > prix generic
+  // Exclude columns already mapped (e.g. pmc_ht) to avoid false matches
+  const usedIndices = new Set(Object.values(mapping));
   for (const pattern of PRIX_PATTERNS) {
-    const idx = headers.findIndex(h => pattern.test(h));
+    const idx = headers.findIndex((h, i) => !usedIndices.has(i) && pattern.test(h));
     if (idx !== -1) {
       mapping.prix = idx;
       break;

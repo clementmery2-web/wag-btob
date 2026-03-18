@@ -191,7 +191,7 @@ export function NouvelleOffreClient() {
             <select
               value={flux}
               onChange={e => setFlux(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
             >
               <option value="dropshipping">Dropshipping</option>
               <option value="stock_wag">Stock WAG (entrepôt)</option>
