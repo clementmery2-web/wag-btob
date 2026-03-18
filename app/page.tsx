@@ -1,17 +1,100 @@
 'use client';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { CATEGORIES, CATEGORY_EMOJI } from './lib/catalogue-data';
+import { CATEGORY_EMOJI, FILTRE_CATEGORY_MAP } from './lib/catalogue-data';
 import type { CatalogueProduit } from './lib/catalogue-data';
 
 const SEUIL_COMMANDE = 500;
+const TVA_RATE = 0.20;
+
+const FILTRES = [
+  { id: 'tout', label: 'Tout', emoji: '' },
+  { id: 'meilleures_affaires', label: 'Meilleures affaires', emoji: '\u2B50' },
+  { id: 'stock_limite', label: 'Stock limité', emoji: '\u26A1' },
+  { id: 'ddm_courte', label: 'DDM courte', emoji: '\u{1F550}' },
+  { id: 'marge_max', label: 'Marge max', emoji: '\u{1F4B0}' },
+  { id: 'epicerie', label: 'Épicerie', emoji: '\u{1F96B}' },
+  { id: 'hygiene', label: 'Hygiène & Beauté', emoji: '\u{1F9F4}' },
+  { id: 'bebe', label: 'Bébé', emoji: '\u{1F37C}' },
+  { id: 'entretien', label: 'Entretien', emoji: '\u{1F9F9}' },
+  { id: 'animaux', label: 'Animaux', emoji: '\u{1F43E}' },
+] as const;
+
+type FiltreId = (typeof FILTRES)[number]['id'];
+
+// ─── Helpers ────────────────────────────────────────────────────
+
+function num(v: unknown): number {
+  if (typeof v === 'number') return isNaN(v) ? 0 : v;
+  const n = parseFloat(String(v));
+  return isNaN(n) ? 0 : n;
+}
+
+function joursRestants(ddm: string | null | undefined): number {
+  if (!ddm) return 0;
+  const ts = new Date(ddm).getTime();
+  if (isNaN(ts)) return 0;
+  return Math.max(0, Math.floor((ts - Date.now()) / 86400000));
+}
+
+function formatEur(n: number): string {
+  const safe = isNaN(n) ? 0 : n;
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(safe);
+}
+
+/** Nombre minimum de cartons pour atteindre le QMC */
+function nbCartonsMin(p: CatalogueProduit): number {
+  const pcb = num(p.pcb) || 1;
+  const minUnites = num(p.min_unites) || pcb;
+  return Math.max(1, Math.ceil(minUnites / pcb));
+}
+
+/** Filtre + tri intelligent */
+function filtrerEtTrier(produits: CatalogueProduit[], filtre: FiltreId): CatalogueProduit[] {
+  let result = [...produits];
+
+  // Calcul jours restants pour chaque produit
+  const joursMap = new Map<string, number>();
+  for (const p of result) joursMap.set(p.id, joursRestants(p.ddm));
+
+  // FILTRAGE
+  if (filtre === 'stock_limite') {
+    result = result.filter(p => num(p.stock_disponible) < 200);
+  } else if (filtre === 'ddm_courte') {
+    result = result.filter(p => { const j = joursMap.get(p.id) ?? 0; return j > 0 && j < 90; });
+  } else if (filtre in FILTRE_CATEGORY_MAP) {
+    const cats = FILTRE_CATEGORY_MAP[filtre];
+    result = result.filter(p => cats.includes(p.categorie));
+  }
+
+  // TRI
+  if (filtre === 'meilleures_affaires') {
+    result.sort((a, b) => num(b.remise_pct) - num(a.remise_pct));
+  } else if (filtre === 'marge_max') {
+    result.sort((a, b) => num(b.marge_retail_estimee) - num(a.marge_retail_estimee));
+  } else if (filtre === 'ddm_courte') {
+    result.sort((a, b) => (joursMap.get(a.id) ?? 0) - (joursMap.get(b.id) ?? 0));
+  } else {
+    // Tri par défaut : score composite
+    result.sort((a, b) => {
+      const stockScore = (s: number) => s < 100 ? 100 : s < 500 ? 50 : 0;
+      const scoreA = num(a.remise_pct) * 0.4 + num(a.marge_retail_estimee) * 0.3 + stockScore(num(a.stock_disponible)) * 0.3;
+      const scoreB = num(b.remise_pct) * 0.4 + num(b.marge_retail_estimee) * 0.3 + stockScore(num(b.stock_disponible)) * 0.3;
+      return scoreB - scoreA;
+    });
+  }
+
+  return result;
+}
+
+// ─── Main page ──────────────────────────────────────────────────
 
 export default function CataloguePage() {
-  const [categorie, setCategorie] = useState<string>('Tout');
-  const [produits, setProduits] = useState<CatalogueProduit[]>([]);
+  const [filtre, setFiltre] = useState<FiltreId>('tout');
   const [allProduits, setAllProduits] = useState<CatalogueProduit[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<string>('');
+  // Panier : produit_id → nb_cartons
   const [panier, setPanier] = useState<Record<string, number>>({});
   const [panierOpen, setPanierOpen] = useState(false);
   const [commandeOpen, setCommandeOpen] = useState(false);
@@ -19,46 +102,50 @@ export default function CataloguePage() {
   const [telephone, setTelephone] = useState('');
   const [commandeEnvoyee, setCommandeEnvoyee] = useState(false);
 
-  const fetchProduits = useCallback(async (cat: string) => {
+  const fetchProduits = useCallback(async () => {
     setLoading(true);
     try {
-      const params = cat && cat !== 'Tout' ? `?categorie=${encodeURIComponent(cat)}` : '';
-      const res = await fetch(`/api/catalogue${params}`);
+      const res = await fetch('/api/catalogue');
       const data = await res.json();
-      setProduits(data.produits ?? []);
+      setAllProduits(data.produits ?? []);
       setSource(data.source ?? '');
-      // Store full list on first load for panier lookups
-      if (cat === 'Tout') setAllProduits(data.produits ?? []);
     } catch {
-      setProduits([]);
+      setAllProduits([]);
       setSource('erreur');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchProduits(categorie);
-  }, [categorie, fetchProduits]);
+  useEffect(() => { fetchProduits(); }, [fetchProduits]);
 
+  // Filtered + sorted products
+  const produits = useMemo(() => filtrerEtTrier(allProduits, filtre), [allProduits, filtre]);
+
+  // Panier items with carton-based quantities
   const panierItems = useMemo(() => {
-    const lookup = allProduits.length > 0 ? allProduits : produits;
     return Object.entries(panier)
-      .filter(([, qty]) => qty > 0)
-      .map(([id, qty]) => {
-        const p = lookup.find(x => x.id === id);
+      .filter(([, cartons]) => cartons > 0)
+      .map(([id, cartons]) => {
+        const p = allProduits.find(x => x.id === id);
         if (!p) return null;
-        const prix = typeof p.prix_wag_ht === 'number' && !isNaN(p.prix_wag_ht) ? p.prix_wag_ht : parseFloat(String(p.prix_wag_ht)) || 0;
-        return { ...p, qty, total: prix * qty };
+        const pcb = num(p.pcb) || 1;
+        const prixUnit = num(p.prix_wag_ht);
+        const nbUnites = cartons * pcb;
+        const total = nbUnites * prixUnit;
+        return { ...p, nbCartons: cartons, nbUnites, total };
       })
-      .filter(Boolean) as (CatalogueProduit & { qty: number; total: number })[];
-  }, [panier, allProduits, produits]);
+      .filter(Boolean) as (CatalogueProduit & { nbCartons: number; nbUnites: number; total: number })[];
+  }, [panier, allProduits]);
 
+  const totalCartons = panierItems.reduce((s, i) => s + i.nbCartons, 0);
+  const totalUnites = panierItems.reduce((s, i) => s + i.nbUnites, 0);
   const totalHT = panierItems.reduce((s, i) => s + i.total, 0);
-  const nbArticles = panierItems.reduce((s, i) => s + i.qty, 0);
+  const tva = totalHT * TVA_RATE;
+  const totalTTC = totalHT + tva;
   const seuilAtteint = totalHT >= SEUIL_COMMANDE;
 
-  // Group dropshipping items by fournisseur for minimum validation
+  // Group dropshipping items by fournisseur
   const fournisseurGroups = useMemo(() => {
     const groups = new Map<string, { items: typeof panierItems; totalHT: number }>();
     for (const item of panierItems) {
@@ -74,13 +161,14 @@ export default function CataloguePage() {
   }, [panierItems]);
 
   const nbFournisseurs = fournisseurGroups.size;
-  // Check if any dropshipping fournisseur doesn't meet its product minimum QMC
+
   const fournisseurWarnings = useMemo(() => {
     const warnings: string[] = [];
     for (const [nom, group] of fournisseurGroups) {
       for (const item of group.items) {
-        if (item.qty < num(item.min_unites)) {
-          warnings.push(`${nom} : ${item.nom} — minimum ${num(item.min_unites)} unités (${num(item.min_cartons)} cartons)`);
+        const minCartons = nbCartonsMin(item);
+        if (item.nbCartons < minCartons) {
+          warnings.push(`${nom} : ${item.nom} — min. ${minCartons} carton${minCartons > 1 ? 's' : ''} (${minCartons * (num(item.pcb) || 1)} unités)`);
         }
       }
     }
@@ -89,19 +177,25 @@ export default function CataloguePage() {
 
   const commandeBloquee = !seuilAtteint || fournisseurWarnings.length > 0;
 
-  function addToPanier(id: string, min: number) {
+  function addToPanier(p: CatalogueProduit) {
+    const min = nbCartonsMin(p);
     setPanier(prev => ({
       ...prev,
-      [id]: (prev[id] ?? 0) + Math.max(1, min),
+      [p.id]: (prev[p.id] ?? 0) + min,
     }));
   }
 
-  function updateQty(id: string, qty: number) {
-    if (qty <= 0) {
+  function updateCartons(id: string, cartons: number, minCartons: number) {
+    if (cartons < minCartons) {
+      // Below minimum → remove from cart
       setPanier(prev => { const n = { ...prev }; delete n[id]; return n; });
     } else {
-      setPanier(prev => ({ ...prev, [id]: qty }));
+      setPanier(prev => ({ ...prev, [id]: cartons }));
     }
+  }
+
+  function removeFromPanier(id: string) {
+    setPanier(prev => { const n = { ...prev }; delete n[id]; return n; });
   }
 
   function handleCommande(e: React.FormEvent) {
@@ -109,23 +203,7 @@ export default function CataloguePage() {
     setCommandeEnvoyee(true);
   }
 
-  function num(v: unknown): number {
-    if (typeof v === 'number') return isNaN(v) ? 0 : v;
-    const n = parseFloat(String(v));
-    return isNaN(n) ? 0 : n;
-  }
-
-  function joursRestants(ddm: string | null | undefined): number {
-    if (!ddm) return 0;
-    const ts = new Date(ddm).getTime();
-    if (isNaN(ts)) return 0;
-    return Math.max(0, Math.floor((ts - Date.now()) / 86400000));
-  }
-
-  function formatEur(n: number): string {
-    const safe = isNaN(n) ? 0 : n;
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(safe);
-  }
+  // ─── Render ─────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -154,9 +232,9 @@ export default function CataloguePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
               </svg>
               Panier
-              {nbArticles > 0 && (
+              {totalCartons > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {nbArticles}
+                  {totalCartons}
                 </span>
               )}
             </button>
@@ -177,19 +255,19 @@ export default function CataloguePage() {
           </p>
         </div>
 
-        {/* Filtres catégories */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {CATEGORIES.map(cat => (
+        {/* Filtres — pills scrollables */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {FILTRES.map(f => (
             <button
-              key={cat}
-              onClick={() => setCategorie(cat)}
-              className={`text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                categorie === cat
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:text-green-700'
+              key={f.id}
+              onClick={() => setFiltre(f.id)}
+              className={`flex-shrink-0 text-sm font-medium px-4 py-2 rounded-full border transition-colors ${
+                filtre === f.id
+                  ? 'bg-green-700 text-white border-green-700'
+                  : 'bg-white text-gray-700 border-gray-200 hover:border-green-500'
               }`}
             >
-              {cat}
+              {f.emoji ? `${f.emoji} ` : ''}{f.label}
             </button>
           ))}
         </div>
@@ -197,7 +275,7 @@ export default function CataloguePage() {
         {/* Source indicator (dev) */}
         {source && (
           <p className="text-xs text-gray-400 mb-2">
-            Source : {source === 'supabase' ? '🟢 Supabase' : source === 'demo' ? '🟡 Données de démo' : '🔴 Erreur'}
+            Source : {source === 'supabase' ? '\u{1F7E2} Supabase' : source === 'demo' ? '\u{1F7E1} Données de démo' : '\u{1F534} Erreur'}
             {source === 'demo' && ' — configurez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY'}
           </p>
         )}
@@ -214,7 +292,12 @@ export default function CataloguePage() {
         {!loading && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-12">
           {produits.map(p => {
             const jours = joursRestants(p.ddm);
-            const inPanier = panier[p.id] ?? 0;
+            const cartonsInPanier = panier[p.id] ?? 0;
+            const pcb = num(p.pcb) || 1;
+            const minCartons = nbCartonsMin(p);
+            const unitesInPanier = cartonsInPanier * pcb;
+            const prixLigne = unitesInPanier * num(p.prix_wag_ht);
+
             return (
               <div key={p.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
                 {/* Photo */}
@@ -235,6 +318,19 @@ export default function CataloguePage() {
                   }`}>
                     DDM {jours}j
                   </span>
+                  {/* Badge contextuel selon filtre actif */}
+                  {filtre === 'meilleures_affaires' && (
+                    <span className="absolute bottom-2 left-2 bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{'\u2B50'} Top affaire</span>
+                  )}
+                  {filtre === 'stock_limite' && (
+                    <span className="absolute bottom-2 left-2 bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{'\u26A1'} Stock limité</span>
+                  )}
+                  {filtre === 'ddm_courte' && (
+                    <span className="absolute bottom-2 left-2 bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{'\u{1F550}'} Prix cassé</span>
+                  )}
+                  {filtre === 'marge_max' && (
+                    <span className="absolute bottom-2 left-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{'\u{1F4B0}'} Marge +{Math.round(num(p.marge_retail_estimee))}%</span>
+                  )}
                 </div>
 
                 {/* Info */}
@@ -262,37 +358,43 @@ export default function CataloguePage() {
                   <div className="text-xs text-gray-400 mb-3">
                     {p.flux === 'dropshipping' ? (
                       <>
-                        <p>Min. {num(p.min_commande)} palette{num(p.min_commande) > 1 ? 's' : ''} &bull; {num(p.min_cartons)} cartons &bull; {num(p.min_unites)} unités</p>
+                        <p>Min. {minCartons} carton{minCartons > 1 ? 's' : ''} &bull; {minCartons * pcb} unités</p>
                         <p className="text-[10px] text-amber-600 mt-0.5">Expédié par le fournisseur</p>
                       </>
                     ) : (
-                      <p>Min. 1 carton &bull; {num(p.min_unites) || num(p.pcb) || '?'} unités</p>
+                      <p>Min. {minCartons} carton{minCartons > 1 ? 's' : ''} &bull; {minCartons * pcb} unités</p>
                     )}
                     <p className="mt-0.5">{num(p.stock_disponible)} dispo</p>
                   </div>
 
-                  {/* Bouton */}
+                  {/* Sélecteur quantité / Bouton ajout */}
                   <div className="mt-auto">
-                    {inPanier > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => updateQty(p.id, inPanier - 1)}
-                          className="w-8 h-8 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-sm font-bold"
-                        >
-                          -
-                        </button>
-                        <span className="text-sm font-semibold text-gray-900 flex-1 text-center">{inPanier}</span>
-                        <button
-                          onClick={() => updateQty(p.id, inPanier + 1)}
-                          className="w-8 h-8 rounded-lg border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-sm font-bold"
-                        >
-                          +
-                        </button>
-                        <span className="text-xs text-gray-500">{formatEur(num(p.prix_wag_ht) * inPanier)}</span>
+                    {cartonsInPanier > 0 ? (
+                      <div>
+                        <div className="flex items-stretch rounded-lg border border-gray-200 overflow-hidden">
+                          <button
+                            onClick={() => updateCartons(p.id, cartonsInPanier - 1, minCartons)}
+                            className="bg-gray-100 hover:bg-gray-200 px-3 py-2 text-gray-700 font-bold text-sm transition-colors"
+                          >
+                            −
+                          </button>
+                          <div className="flex-1 bg-white border-x border-gray-200 px-3 py-2 text-center">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {cartonsInPanier} carton{cartonsInPanier > 1 ? 's' : ''} &middot; {unitesInPanier} unités
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => updateCartons(p.id, cartonsInPanier + 1, minCartons)}
+                            className="bg-green-600 hover:bg-green-700 px-3 py-2 text-white font-bold text-sm transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <p className="text-center text-xs text-green-600 font-semibold mt-1">{formatEur(prixLigne)} HT</p>
                       </div>
                     ) : (
                       <button
-                        onClick={() => addToPanier(p.id, p.min_commande)}
+                        onClick={() => addToPanier(p)}
                         className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -321,7 +423,7 @@ export default function CataloguePage() {
           <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setPanierOpen(false)} />
           <div className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">Panier ({nbArticles} article{nbArticles > 1 ? 's' : ''})</h2>
+              <h2 className="text-lg font-bold text-gray-900">Panier ({totalCartons} carton{totalCartons > 1 ? 's' : ''})</h2>
               <button onClick={() => setPanierOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -337,7 +439,7 @@ export default function CataloguePage() {
               {/* Avertissement multi-fournisseur dropshipping */}
               {nbFournisseurs > 1 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                  <p className="font-semibold">&#9888;&#65039; {nbFournisseurs} expéditions séparées — {nbFournisseurs} minimums de commande</p>
+                  <p className="font-semibold">{'\u26A0\uFE0F'} {nbFournisseurs} expéditions séparées — {nbFournisseurs} minimums de commande</p>
                 </div>
               )}
 
@@ -356,7 +458,7 @@ export default function CataloguePage() {
                 <div>
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Stock WAG / Transit</p>
                   {panierItems.filter(i => i.flux !== 'dropshipping').map(item => (
-                    <PanierItemRow key={item.id} item={item} updateQty={updateQty} formatEur={formatEur} num={num} />
+                    <PanierItemRow key={item.id} item={item} updateCartons={updateCartons} removeFromPanier={removeFromPanier} />
                   ))}
                 </div>
               )}
@@ -368,30 +470,45 @@ export default function CataloguePage() {
                     Expédié par {fournisseur}
                   </p>
                   {group.items.map(item => (
-                    <PanierItemRow key={item.id} item={item} updateQty={updateQty} formatEur={formatEur} num={num} />
+                    <PanierItemRow key={item.id} item={item} updateCartons={updateCartons} removeFromPanier={removeFromPanier} />
                   ))}
                 </div>
               ))}
             </div>
 
-            {/* Total + seuil */}
+            {/* Résumé + seuil */}
             <div className="border-t border-gray-200 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-base font-semibold text-gray-900">Total HT</span>
-                <span className="text-xl font-bold text-gray-900">{formatEur(totalHT)}</span>
+              {/* Résumé */}
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between text-gray-500">
+                  <span>Sous-total</span>
+                  <span>{totalCartons} cartons &middot; {totalUnites} unités</span>
+                </div>
+                <div className="flex justify-between font-semibold text-gray-900">
+                  <span>Montant HT</span>
+                  <span>{formatEur(totalHT)}</span>
+                </div>
+                <div className="flex justify-between text-gray-500">
+                  <span>TVA estimée (20%)</span>
+                  <span>{formatEur(tva)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-gray-900 text-base pt-1 border-t border-gray-100">
+                  <span>Total TTC estimé</span>
+                  <span>{formatEur(totalTTC)}</span>
+                </div>
               </div>
 
               {/* Barre de seuil */}
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-gray-500">Seuil minimum {formatEur(SEUIL_COMMANDE)} HT</span>
-                  <span className={seuilAtteint ? 'text-green-600 font-medium' : 'text-gray-400'}>
-                    {seuilAtteint ? '✓ Atteint' : `${formatEur(SEUIL_COMMANDE - totalHT)} restant`}
+                  <span className={seuilAtteint ? 'text-green-600 font-medium' : 'text-red-500'}>
+                    {seuilAtteint ? '\u2705 Commande minimum atteinte !' : `Il vous manque ${formatEur(SEUIL_COMMANDE - totalHT)} HT`}
                   </span>
                 </div>
                 <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${seuilAtteint ? 'bg-green-500' : 'bg-amber-400'}`}
+                    className={`h-full rounded-full transition-all ${seuilAtteint ? 'bg-green-500' : 'bg-red-400'}`}
                     style={{ width: `${Math.min(100, (totalHT / SEUIL_COMMANDE) * 100)}%` }}
                   />
                 </div>
@@ -401,17 +518,21 @@ export default function CataloguePage() {
                 <button
                   onClick={() => setCommandeOpen(true)}
                   disabled={commandeBloquee}
-                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-bold py-3 rounded-lg transition-colors"
+                  className={`w-full text-sm font-bold py-3 rounded-lg transition-colors ${
+                    commandeBloquee
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-700 hover:bg-green-800 text-white'
+                  }`}
                 >
                   {!seuilAtteint
                     ? `Minimum ${formatEur(SEUIL_COMMANDE)} HT requis`
                     : fournisseurWarnings.length > 0
                       ? 'Minimum fournisseur non atteint'
-                      : 'Commander →'}
+                      : 'Commander \u2192'}
                 </button>
               ) : commandeEnvoyee ? (
                 <div className="text-center py-4">
-                  <div className="text-3xl mb-2">🎉</div>
+                  <div className="text-3xl mb-2">{'\u{1F389}'}</div>
                   <p className="text-base font-bold text-gray-900">Commande envoyée !</p>
                   <p className="text-sm text-gray-500 mt-1">Nous vous recontactons sous 2h.</p>
                 </div>
@@ -436,7 +557,7 @@ export default function CataloguePage() {
                   />
                   <button
                     type="submit"
-                    className="w-full bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-3 rounded-lg transition-colors"
+                    className="w-full bg-green-700 hover:bg-green-800 text-white text-sm font-bold py-3 rounded-lg transition-colors"
                   >
                     Envoyer ma commande ({formatEur(totalHT)} HT)
                   </button>
@@ -467,7 +588,7 @@ export default function CataloguePage() {
       </footer>
 
       {/* Bouton panier sticky mobile */}
-      {nbArticles > 0 && !panierOpen && (
+      {totalCartons > 0 && !panierOpen && (
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 z-40">
           <button
             onClick={() => setPanierOpen(true)}
@@ -476,7 +597,7 @@ export default function CataloguePage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
             </svg>
-            Voir le panier — {formatEur(totalHT)} HT ({nbArticles})
+            Voir le panier — {formatEur(totalHT)} HT ({totalCartons} carton{totalCartons > 1 ? 's' : ''})
           </button>
         </div>
       )}
@@ -484,25 +605,66 @@ export default function CataloguePage() {
   );
 }
 
-/** Ligne produit dans le panier latéral */
-function PanierItemRow({ item, updateQty, formatEur: fmtEur, num: n }: {
-  item: CatalogueProduit & { qty: number; total: number };
-  updateQty: (id: string, qty: number) => void;
-  formatEur: (n: number) => string;
-  num: (v: unknown) => number;
+// ─── Panier item row ──────────────────────────────────────────
+
+function PanierItemRow({ item, updateCartons, removeFromPanier }: {
+  item: CatalogueProduit & { nbCartons: number; nbUnites: number; total: number };
+  updateCartons: (id: string, cartons: number, minCartons: number) => void;
+  removeFromPanier: (id: string) => void;
 }) {
+  const pcb = num(item.pcb) || 1;
+  const minC = nbCartonsMin(item);
+
   return (
-    <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 mb-2">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{item.nom}</p>
-        <p className="text-xs text-gray-500">{item.marque} — {fmtEur(n(item.prix_wag_ht))} HT/u</p>
+    <div className="bg-gray-50 rounded-lg p-3 mb-2">
+      <div className="flex items-start gap-3 mb-2">
+        {/* Photo mini */}
+        <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+          {item.photo_url && (item.photo_statut === 'validee' || item.photo_statut === 'upload_manuel' || item.photo_statut === 'auto_trouvee') ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.photo_url} alt={item.nom} className="w-full h-full object-contain rounded" />
+          ) : (
+            <span className="text-lg">{CATEGORY_EMOJI[item.categorie] || '\u{1F4E6}'}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">{item.nom}</p>
+          <p className="text-xs text-gray-500">{item.marque}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {item.nbCartons} carton{item.nbCartons > 1 ? 's' : ''} &times; {pcb} unités = {item.nbUnites} unités
+          </p>
+          <p className="text-xs text-gray-400">{formatEur(num(item.prix_wag_ht))} HT / unité</p>
+        </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">-</button>
-        <span className="text-sm font-semibold w-6 text-center">{item.qty}</span>
-        <button onClick={() => updateQty(item.id, item.qty + 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">+</button>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => updateCartons(item.id, item.nbCartons - 1, minC)}
+            className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100"
+          >
+            −
+          </button>
+          <span className="text-sm font-semibold px-2 min-w-[60px] text-center">
+            {item.nbCartons} crt{item.nbCartons > 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => updateCartons(item.id, item.nbCartons + 1, minC)}
+            className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100"
+          >
+            +
+          </button>
+        </div>
+        <span className="text-sm font-bold text-gray-900">{formatEur(item.total)}</span>
       </div>
-      <span className="text-sm font-semibold text-gray-900 w-16 text-right">{fmtEur(item.total)}</span>
+      <button
+        onClick={() => removeFromPanier(item.id)}
+        className="mt-2 text-[11px] text-red-500 hover:text-red-700 transition-colors flex items-center gap-1"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+        </svg>
+        Supprimer
+      </button>
     </div>
   );
 }

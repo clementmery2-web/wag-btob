@@ -43,8 +43,6 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   'Bébé': '\u{1F37C}',
   'Entretien': '\u{1F9F9}',
   'Animaux': '\u{1F43E}',
-  'Surgelés': '\u{1F96B}',
-  'Frais': '\u{1F96B}',
 };
 
 export const CATEGORIES = [
@@ -56,9 +54,16 @@ export const CATEGORIES = [
   'Bébé',
   'Entretien',
   'Animaux',
-  'Surgelés',
-  'Frais',
 ] as const;
+
+/** Mapping filtre → catégories Supabase réelles */
+export const FILTRE_CATEGORY_MAP: Record<string, string[]> = {
+  epicerie: ['Épicerie salée', 'Épicerie sucrée', 'Boissons'],
+  hygiene: ['Hygiène & Beauté'],
+  bebe: ['Bébé'],
+  entretien: ['Entretien'],
+  animaux: ['Animaux'],
+};
 
 function d(daysFromNow: number): string {
   const date = new Date();
