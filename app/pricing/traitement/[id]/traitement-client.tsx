@@ -232,6 +232,12 @@ export function TraitementClient({ offreId }: { offreId: string }) {
           >
             Règles auto
           </button>
+          <button
+            onClick={() => window.open('/pricing/pmc/recherche', '_blank')}
+            className="text-xs text-gray-900 hover:text-indigo-700 border border-gray-300 px-3 py-1.5 rounded-md font-medium"
+          >
+            Recherche PMC →
+          </button>
           <Link
             href={`/pricing/validation/${offreId}`}
             className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
