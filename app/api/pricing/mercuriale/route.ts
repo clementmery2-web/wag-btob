@@ -25,41 +25,7 @@ interface ProduitParse {
   poids: number | null;
 }
 
-const CLAUDE_PROMPT = `Tu es un expert en import de mercuriales fournisseurs.
-Analyse ce tableau de données (extrait d'un fichier Excel) et extrait tous les produits.
-Pour chaque produit, retourne un objet JSON avec :
-{
-  ref: string (référence produit),
-  nom: string (nom complet du produit),
-  marque: string (marque du produit),
-  ean: string (code barre EAN13, "" si absent),
-  prix_achat_ht: number (prix d'achat HT unitaire),
-  pcb: number (colisage, unités par carton, 1 si non trouvé),
-  stock: number (quantité disponible, 0 si non trouvé),
-  ddm: string (format YYYY-MM-DD) ou null,
-  tva: number (5.5 pour alimentaire, 20 pour non-alimentaire),
-  poids: number (en kg) ou null
-}
-Colonnes possibles dans les mercuriales :
-- Prix : 'prix', 'prix_uc', 'prix unitaire', 'prix achat', 'prix_antigaspi', 'tarif', 'pu', 'pa'
-- Stock : 'stock', 'qté', 'quantite', 'disponible', 'qty'
-- PCB : 'pcb', 'colisage', 'colis', 'carton', 'qmc', 'uvc'
-- DDM : 'ddm', 'dluo', 'dlc', 'date limite', 'date'
-- EAN : 'ean', 'code barre', 'barcode', 'gtin', 'ean13'
-- Poids : 'poids', 'poids_net', 'grammage', 'contenance'
-Si une colonne est ambiguë, faire la meilleure interprétation possible.
-
-Extrait aussi si possible :
-- fournisseur_nom : nom de l'entreprise fournisseur (souvent en en-tête du fichier, ou dans le nom de fichier, ou déduit des marques)
-- fournisseur_email : email de contact si présent dans le fichier
-
-Retourne UNIQUEMENT un objet JSON valide avec cette structure :
-{
-  "fournisseur_nom": string ou null,
-  "fournisseur_email": string ou null,
-  "produits": [{"ref":"...","nom":"..."}]
-}
-Pas d'explication, pas de markdown.`;
+const MAX_CHARS = 6000;
 
 /**
  * POST /api/pricing/mercuriale
@@ -112,7 +78,7 @@ async function handleParse(req: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
       totalRows += Math.max(0, rows.length - 1); // exclude header
-      const sample = rows.slice(0, 201); // header + 200 lignes max
+      const sample = rows.slice(0, 51); // header + 50 lignes max
       const sheetCsv = sample
         .map((r: unknown[]) => r.map(c => String(c ?? '').replace(/,/g, ';')).join(','))
         .join('\n');
@@ -152,8 +118,8 @@ async function handleParse(req: NextRequest) {
   }
 
   try {
-    const truncNote = totalRows > 200 ? `\n⚠️ Fichier tronqué : ${totalRows} lignes totales, seules les 200 premières par feuille sont incluses.` : '';
-    console.log('[mercuriale] Envoi à Claude API:', csvText.length, 'chars,', totalRows, 'lignes totales');
+    const textToSend = csvText.slice(0, MAX_CHARS);
+    console.log('[mercuriale] Envoi à Claude API:', textToSend.length, 'chars (tronqué de', csvText.length, '),', totalRows, 'lignes totales');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000); // 25s max
@@ -168,10 +134,10 @@ async function handleParse(req: NextRequest) {
       signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 4000,
+        max_tokens: 2000,
         messages: [{
           role: 'user',
-          content: `${CLAUDE_PROMPT}\n\nNom du fichier: ${file.name}\nColonnes détectées: ${colonnes.join(', ')}${truncNote}\n\nDonnées CSV:\n${csvText}`,
+          content: `Analyse ce fichier mercuriale fournisseur.\nExtrais tous les produits en JSON.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nDDM format : YYYY-MM-DD ou null\nTVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
         }],
       }),
     });
@@ -245,7 +211,7 @@ async function handleParse(req: NextRequest) {
     console.log('[mercuriale] Produits valides:', cleanProduits.length, '| Alertes:', alertes);
 
     if (isLargeFile) {
-      alertes.push('Fichier volumineux — analyse limitée aux 200 premières lignes par feuille');
+      alertes.push('Fichier volumineux — analyse limitée aux 50 premières lignes par feuille');
     }
 
     return NextResponse.json({
