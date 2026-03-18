@@ -179,6 +179,9 @@ export default function CataloguePage() {
   const [telephone, setTelephone] = useState('');
   const [note, setNote] = useState('');
   const [commandeEnvoyee, setCommandeEnvoyee] = useState(false);
+  const [commandeNumero, setCommandeNumero] = useState('');
+  const [commandeLoading, setCommandeLoading] = useState(false);
+  const [commandeError, setCommandeError] = useState('');
 
   const grilleRef = useRef<HTMLDivElement>(null);
 
@@ -253,9 +256,49 @@ export default function CataloguePage() {
     }
   }
 
-  function handleCommande(e: React.FormEvent) {
+  async function handleCommande(e: React.FormEvent) {
     e.preventDefault();
-    setCommandeEnvoyee(true);
+    setCommandeLoading(true);
+    setCommandeError('');
+    try {
+      const remisePct = remiseAppliquee ? REMISE_FIDELITE * 100 : 0;
+      const payload = {
+        email,
+        telephone,
+        note,
+        produits: panierItems.map(item => ({
+          produit_id: item.id,
+          nom: item.nom,
+          marque: item.marque,
+          nb_cartons: item.nbCartons,
+          nb_unites: item.nbUnites,
+          prix_wag_ht: num(item.prix_wag_ht),
+          tva_taux: num(item.tva_taux) || 5.5,
+          total_ligne_ht: item.total,
+        })),
+        total_ht: totalHT,
+        remise_pct: remisePct,
+        total_apres_remise_ht: totalFinal,
+      };
+      const res = await fetch('/api/commande', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setCommandeError(data.error || 'Erreur lors de l\'envoi');
+        return;
+      }
+      setCommandeNumero(data.numero);
+      setCommandeEnvoyee(true);
+      setPanier({});
+      setTimeout(() => setPanierOpen(false), 3000);
+    } catch {
+      setCommandeError('Erreur réseau. Veuillez réessayer.');
+    } finally {
+      setCommandeLoading(false);
+    }
   }
 
   function scrollToGrille() {
@@ -771,11 +814,22 @@ export default function CataloguePage() {
                     onChange={e => setNote(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none resize-none"
                   />
+                  {commandeError && (
+                    <p className="text-xs text-red-600 text-center">{commandeError}</p>
+                  )}
                   <button
                     type="submit"
-                    className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-lg transition-colors text-lg"
+                    disabled={commandeLoading}
+                    className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white font-bold py-4 rounded-lg transition-colors text-lg flex items-center justify-center gap-2"
                   >
-                    Envoyer ma commande &rarr;
+                    {commandeLoading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      <>Envoyer ma commande &rarr;</>
+                    )}
                   </button>
                   <p className="text-xs text-gray-400 text-center leading-relaxed">
                     Confirmation sous 2h &bull; Paiement à 30 jours disponible pour les clients récurrents
@@ -784,9 +838,11 @@ export default function CataloguePage() {
               )}
 
               {commandeEnvoyee && (
-                <div className="text-center py-4">
-                  <p className="text-base font-bold text-green-700">Commande envoyée !</p>
-                  <p className="text-sm text-gray-500 mt-1">Nous vous recontactons sous 2h.</p>
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-lg font-bold text-green-700">&#x2705; Commande {commandeNumero} reçue !</p>
+                  <p className="text-sm text-gray-600">
+                    Nous vous recontactons sous 2h à l&apos;adresse <strong>{email}</strong>.
+                  </p>
                 </div>
               )}
 
