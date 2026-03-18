@@ -95,6 +95,7 @@ async function handleParse(req: NextRequest) {
   if (columnMappingStr) {
     try { userMapping = JSON.parse(columnMappingStr); } catch { /* ignore */ }
   }
+  console.log('[mercuriale] columnMapping reçu:', JSON.stringify(userMapping));
 
   if (!file) {
     return NextResponse.json({ error: 'Fichier requis' }, { status: 400 });

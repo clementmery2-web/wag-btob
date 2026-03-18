@@ -117,6 +117,7 @@ export function NouvelleOffreClient() {
       return;
     }
 
+    console.log('[mapping] envoyé:', JSON.stringify(cleanMapping));
     setErreur('');
     setLoading(true);
     setEtape('analyse');
