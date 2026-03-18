@@ -128,6 +128,7 @@ async function handleParse(req: NextRequest) {
       if (Object.keys(autoMapping).length === 0) autoMapping = autoMap;
       const colMap = userMapping || autoMap;
       console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', JSON.stringify(colMap));
+      console.log('[mercuriale] colMap final utilisé:', JSON.stringify(colMap));
 
       // Try to detect supplier name from sheet name or first cell area
       if (!fournisseurNomDetecte && sheetName && !/airtable|sheet|feuil|csv/i.test(sheetName)) {
@@ -144,6 +145,12 @@ async function handleParse(req: NextRequest) {
 
         // Skip empty rows
         if (!nom && !prix) continue;
+
+        if (i === 0) {
+          const ean = colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '';
+          const stock = colMap.stock !== undefined ? Math.max(0, Math.round(Number(row[colMap.stock]) || 0)) : 0;
+          console.log('[mercuriale] Ligne 1 extraite:', JSON.stringify({nom, prix, ean, stock}));
+        }
 
         const tvaRaw = colMap.tva !== undefined ? Number(row[colMap.tva]) : NaN;
         const ddmRaw = colMap.ddm !== undefined ? String(row[colMap.ddm] ?? '').trim() : '';
