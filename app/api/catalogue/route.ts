@@ -73,9 +73,9 @@ function tvaPourCategorie(cat: string): number {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSupabaseToCatalogue(row: any): CatalogueProduit {
   const flux: FluxType = row.flux || 'stock_wag';
-  const pcb = parseInt(row.pcb, 10) || 1;
+  const pcb = Math.max(1, parseInt(row.qmc, 10) || parseInt(row.pcb, 10) || 1);
   const palletisation = parseInt(row.palletisation, 10) || DEFAULT_PALLETISATION;
-  const qmcFourn = parseInt(row.qmc_fournisseur ?? row.qmc, 10) || 1;
+  const qmcFourn = parseInt(row.qmc_fournisseur, 10) || 1;
   const stockDispo = parseInt(row.stock_disponible, 10) || 0;
 
   let min_commande: number;
@@ -182,6 +182,11 @@ export async function GET(req: NextRequest) {
               console.log('[catalogue] Colonnes premier produit :', Object.keys(data[0]).join(', '));
             }
             const mapped = (data ?? []).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
+            // Debug logs
+            console.log('[catalogue] PCB debug:', data?.slice(0, 3)?.map(p => ({
+              nom: (p.nom || '').slice(0, 30), qmc: p.qmc, pcb: p.pcb
+            })));
+            console.log('[catalogue] Catégories:', [...new Set(mapped.map(p => p.categorie))]);
             return NextResponse.json({ produits: mapped, source: 'supabase' });
           }
         } else {

@@ -95,13 +95,13 @@ function prixReventeEstime(prixWagHt: number, tvaTaux: number): number {
   return Math.ceil(raw * 10) / 10 - 0.01;
 }
 
-/** Marge estimée correcte */
+/** Marge estimée correcte : toujours 33% (revente ×1.50) */
 function margeEstimee(prixWagHt: number, tvaTaux: number): number {
   const tvaMult = 1 + tvaTaux / 100;
-  const revente = prixReventeEstime(prixWagHt, tvaTaux);
-  const coutTTC = prixWagHt * tvaMult;
-  if (revente <= 0) return 0;
-  return Math.round(((revente - coutTTC) / revente) * 100);
+  const prixReventeTtc = prixWagHt * 1.50 * tvaMult;
+  const coutAchatTtc = prixWagHt * tvaMult;
+  if (prixReventeTtc <= 0) return 0;
+  return Math.round((prixReventeTtc - coutAchatTtc) / prixReventeTtc * 100);
 }
 
 /** Truncate brand for placeholder (max 12 chars) */
@@ -134,13 +134,17 @@ function filtrerEtTrier(produits: ProduitAvecDate[], filtre: FiltreId): ProduitA
   }
 
   if (filtre === 'epicerie') {
-    const cats = ['Épicerie salée', 'Épicerie sucrée', 'Boissons'];
-    result = result.filter(p => cats.includes(p.categorie));
+    result = result.filter(p => {
+      const lc = (p.categorie || '').toLowerCase();
+      return lc.includes('épicerie') || lc.includes('epicerie') || lc.includes('alimentaire') || lc.includes('boisson');
+    });
   }
 
   if (filtre === 'hygiene_entretien') {
-    const cats = ['Hygiène & Beauté', 'Entretien'];
-    result = result.filter(p => cats.includes(p.categorie));
+    result = result.filter(p => {
+      const lc = (p.categorie || '').toLowerCase();
+      return lc.includes('hygiène') || lc.includes('hygiene') || lc.includes('beauté') || lc.includes('beaute') || lc.includes('entretien');
+    });
   }
 
   if (filtre === 'petits_prix') {
@@ -500,9 +504,7 @@ export default function CataloguePage() {
 
                 const nomNorm = normalizeName(p.nom);
                 const revente = prixReventeEstime(prixUnit, tvaTaux);
-                const marge = num(p.marge_retail_estimee) > 0
-                  ? Math.round(num(p.marge_retail_estimee))
-                  : margeEstimee(prixUnit, tvaTaux);
+                const marge = margeEstimee(prixUnit, tvaTaux);
 
                 return (
                   <div key={p.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">

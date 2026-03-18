@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   if (!url || !key) return null;
   return createClient(url, key);
+}
+
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
 }
 
 interface LigneCommande {
@@ -159,6 +166,61 @@ export async function POST(req: NextRequest) {
   if (errNotif) {
     console.error('[commande] Erreur insertion notification :', errNotif.message);
     // Non bloquant
+  }
+
+  // 4. Envoi emails via Resend (non bloquant)
+  const resend = getResend();
+  if (resend) {
+    const produitsHtml = produits.map(p =>
+      `<li>${p.nom} &times; ${p.nb_cartons} cartons (${p.nb_unites} UVC) &mdash; ${p.total_ligne_ht.toFixed(2)}&euro; HT</li>`
+    ).join('');
+
+    // Email interne
+    try {
+      const contactEmail = process.env.CONTACT_EMAIL;
+      if (contactEmail) {
+        await resend.emails.send({
+          from: 'WAG BtoB <onboarding@resend.dev>',
+          to: contactEmail,
+          subject: `\u{1F6D2} Nouvelle commande ${numero} — ${Math.round(total_apres_remise_ht)}€ HT`,
+          html: `
+            <h2>Nouvelle commande re\u00e7ue</h2>
+            <p><strong>Client :</strong> ${email}</p>
+            <p><strong>T\u00e9l\u00e9phone :</strong> ${telephone || 'Non renseign\u00e9'}</p>
+            <p><strong>Total :</strong> ${total_apres_remise_ht.toFixed(2)}\u20ac HT</p>
+            <p><strong>Num\u00e9ro :</strong> ${numero}</p>
+            ${note ? `<p><strong>Note :</strong> ${note}</p>` : ''}
+            <ul>${produitsHtml}</ul>
+            <a href="https://wag-btob.vercel.app/pricing">Voir le back-office \u2192</a>
+          `,
+        });
+        console.log('[commande] Email interne envoyé à', contactEmail);
+      }
+    } catch (err) {
+      console.error('[commande] Erreur email interne :', err instanceof Error ? err.message : err);
+    }
+
+    // Email confirmation acheteur
+    try {
+      await resend.emails.send({
+        from: 'Willy Anti-gaspi <onboarding@resend.dev>',
+        to: email,
+        subject: `\u2705 Commande ${numero} re\u00e7ue — Willy Anti-gaspi`,
+        html: `
+          <h2>Votre commande a bien \u00e9t\u00e9 re\u00e7ue !</h2>
+          <p>Num\u00e9ro de commande : <strong>${numero}</strong></p>
+          <p>Total : <strong>${total_apres_remise_ht.toFixed(2)}\u20ac HT</strong></p>
+          <ul>${produitsHtml}</ul>
+          <p>Notre \u00e9quipe vous recontacte sous 2h pour confirmer votre commande.</p>
+          <p>\u00c0 tr\u00e8s vite,<br/>L\u2019\u00e9quipe Willy Anti-gaspi</p>
+        `,
+      });
+      console.log('[commande] Email confirmation envoyé à', email);
+    } catch (err) {
+      console.error('[commande] Erreur email acheteur :', err instanceof Error ? err.message : err);
+    }
+  } else {
+    console.log('[commande] Resend non configuré — emails non envoyés');
   }
 
   return NextResponse.json({
