@@ -124,34 +124,29 @@ async function handleParse(req: NextRequest) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000); // 25s max
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const geminiRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: `Analyse ce fichier mercuriale fournisseur.\nExtrais tous les produits en JSON.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nDDM format : YYYY-MM-DD ou null\nTVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
-        }],
+        contents: [{ parts: [{ text: `Analyse ce fichier mercuriale fournisseur.\nExtrais tous les produits en JSON.\n\nPour chaque produit retourne :\n{ ref, nom, marque, ean, prix_achat_ht, pcb, stock, ddm, tva }\n\nDDM format : YYYY-MM-DD ou null\nTVA : 5.5 pour alimentaire, 20 pour hygiène/entretien\n\nDonnées :\n${textToSend}\n\nRetourne UNIQUEMENT un JSON valide :\n{"fournisseur_nom": "...", "produits": [...]}`,
+        } }] }]
       }),
     });
 
     clearTimeout(timeout);
 
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text();
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
       console.log('[mercuriale] Claude API error:', { status: claudeRes.status, body: errText });
       return NextResponse.json({ error: `Erreur Claude API: ${claudeRes.status}` }, { status: 500 });
     }
 
-    const claudeData = await claudeRes.json();
-    const responseText = claudeData.content?.[0]?.text || '';
+    const geminiData = await geminiRes.json();
+    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
     console.log('[mercuriale] Réponse Claude:', responseText.length, 'chars');
 
     // Parse JSON from Claude response — expects { fournisseur_nom, fournisseur_email, produits: [...] }
