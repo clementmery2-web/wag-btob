@@ -195,12 +195,12 @@ async function handleImport(body: {
     marque: p.marque,
     ean: p.ean || null,
     prix_achat_ht: p.prix_achat_ht,
-    stock: p.stock,
+    stock_disponible: p.stock,
     flux: flux === 'stock_wag' ? 'entrepot' : flux,
     dluo: p.ddm || null,
     tva: p.tva,
-    pcb: p.pcb,
     visible_catalogue: false,
+    statut: 'en_attente',
     photo_statut: 'non_trouvee',
   }));
 
