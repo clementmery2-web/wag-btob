@@ -53,13 +53,13 @@ export default function FournisseursPage() {
       </header>
       <main className="max-w-lg mx-auto px-4 py-8">
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Vous avez du stock a ecouler ?</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Vous avez du stock à écouler ?</h2>
           <p className="text-gray-600">Envoyez-nous votre listing, on s&apos;occupe du reste.</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5">
           <div>
-            <label htmlFor="prenom" className="block text-sm font-medium text-gray-700 mb-1.5">Prenom</label>
-            <input id="prenom" type="text" required placeholder="Votre prenom" value={prenom} onChange={(e) => setPrenom(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-green-500 outline-none text-base" />
+            <label htmlFor="prenom" className="block text-sm font-medium text-gray-700 mb-1.5">Prénom</label>
+            <input id="prenom" type="text" required placeholder="Votre prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-green-500 outline-none text-base" />
           </div>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
@@ -76,7 +76,7 @@ export default function FournisseursPage() {
           <button type="submit" disabled={!canSubmit} className="w-full bg-green-600 hover:bg-green-700 text-white rounded-xl py-3.5 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {loading ? 'Envoi en cours...' : 'Envoyer'}
           </button>
-          <p className="text-xs text-gray-400 text-center">Vos donnees restent confidentielles. Pas de spam.</p>
+          <p className="text-xs text-gray-400 text-center">Vos données restent confidentielles. Pas de spam.</p>
         </form>
       </main>
     </div>

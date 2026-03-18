@@ -24,11 +24,11 @@ export default function ConfirmationPage() {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-3">Merci !</h2>
-          <p className="text-gray-600 text-lg mb-2">Votre fichier a bien ete recu.</p>
-          <p className="text-gray-500 mb-8">On vous repond sous 24h.</p>
+          <p className="text-gray-600 text-lg mb-2">Votre fichier a bien été reçu.</p>
+          <p className="text-gray-500 mb-8">On vous répond sous 24h.</p>
           <div className="space-y-3">
             <Link href="/" className="block bg-green-600 hover:bg-green-700 text-white rounded-xl py-3 text-base font-semibold transition-colors">
-              Decouvrir le catalogue
+              Découvrir le catalogue
             </Link>
             <Link href="/fournisseurs" className="block text-sm text-green-600 hover:text-green-700 font-medium">
               Envoyer un autre fichier
