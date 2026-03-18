@@ -115,7 +115,11 @@ async function handleParse(req: NextRequest) {
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
 
-    for (const sheetName of workbook.SheetNames) {
+    // Use only the first non-"Légende" sheet
+    const mainSheetName = workbook.SheetNames.find(s => !/l[ée]gende/i.test(s));
+    const sheetsToProcess = mainSheetName ? [mainSheetName] : workbook.SheetNames.slice(0, 1);
+
+    for (const sheetName of sheetsToProcess) {
       const sheet = workbook.Sheets[sheetName];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
@@ -187,7 +191,7 @@ async function handleParse(req: NextRequest) {
   }
 
   // 2. Filter valid products and build response
-  const validProduits = cleanProduits.filter(p => p.nom && p.nom.length > 2);
+  const validProduits = cleanProduits.filter(p => p.nom && p.nom.length > 2 && p.nom.length <= 80 && !/^\d+$/.test(p.nom));
 
   const alertes: string[] = [];
   if (validProduits.every(p => !p.ean)) alertes.push('Aucun code EAN détecté');
