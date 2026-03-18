@@ -141,7 +141,10 @@ async function handleParse(req: NextRequest) {
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const nom = colMap.nom !== undefined ? String(row[colMap.nom] ?? '').trim() : '';
-        const prix = colMap.prix !== undefined ? Number(row[colMap.prix]) || 0 : 0;
+        if (i === 0) {
+          console.log('[mercuriale] Valeur brute index 14:', row[14], typeof row[14]);
+        }
+        const prix = colMap.prix !== undefined ? parseFloat(String(row[colMap.prix] ?? 0).replace(',', '.')) || 0 : 0;
 
         // Skip empty rows
         if (!nom && !prix) continue;
