@@ -118,7 +118,7 @@ async function handleParse(req: NextRequest) {
       if (colonnes.length === 0) colonnes = headers;
 
       const colMap = matchColumns(headers);
-      console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', colMap);
+      console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', JSON.stringify(colMap));
 
       // Try to detect supplier name from sheet name or first cell area
       if (!fournisseurNomDetecte && sheetName && !/airtable|sheet|feuil|csv/i.test(sheetName)) {
