@@ -19,15 +19,17 @@ function groupByFournisseur(produits: any[]) {
   const groups = new Map<string, typeof produits>();
 
   for (const p of produits) {
-    const key = p.fournisseurs?.nom || p.fournisseur_id || 'Inconnu';
+    const key = p.fournisseur_id || 'Inconnu';
     const list = groups.get(key) ?? [];
     list.push(p);
     groups.set(key, list);
   }
 
-  return Array.from(groups.entries()).map(([fournisseur, items]) => {
-    // Use a stable ID from fournisseur name
-    const id = Buffer.from(fournisseur).toString('base64url');
+  return Array.from(groups.entries()).map(([fournisseurId, items]) => {
+    // Use fournisseur_id (UUID) for stable base64url ID
+    const id = Buffer.from(fournisseurId).toString('base64url');
+    // Display name from joined fournisseurs table, fallback to ID
+    const fournisseur = items[0]?.fournisseurs?.nom || fournisseurId;
 
     const ddms = items
       .map(p => p.dluo ?? p.ddm)

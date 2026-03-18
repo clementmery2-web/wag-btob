@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
       } else if (fournisseur) {
         query = query.eq('fournisseur_id', fournisseur);
       } else if (offreId) {
-        // offreId is base64url-encoded fournisseur_nom
+        // offreId is base64url-encoded fournisseur_id (UUID)
         try {
           const decoded = Buffer.from(offreId, 'base64url').toString('utf-8');
           query = query.eq('fournisseur_id', decoded);
