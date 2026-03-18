@@ -189,6 +189,35 @@ async function handleImport(body: {
 
   console.log('[mercuriale] Import:', produits.length, 'produits pour', fournisseur_nom);
 
+  // Lookup or create fournisseur
+  let fournisseurId: string | null = null;
+  if (fournisseur_nom) {
+    const { data: existing } = await supabase
+      .from('fournisseurs')
+      .select('id')
+      .eq('nom', fournisseur_nom)
+      .limit(1)
+      .single();
+
+    if (existing?.id) {
+      fournisseurId = existing.id;
+      console.log('[mercuriale] Fournisseur existant:', fournisseurId);
+    } else {
+      const { data: created, error: createErr } = await supabase
+        .from('fournisseurs')
+        .insert({ nom: fournisseur_nom, statut: 'actif' })
+        .select('id')
+        .single();
+
+      if (createErr) {
+        console.error('[mercuriale] Erreur création fournisseur:', createErr.message);
+        return NextResponse.json({ error: `Erreur création fournisseur: ${createErr.message}` }, { status: 500 });
+      }
+      fournisseurId = created?.id ?? null;
+      console.log('[mercuriale] Fournisseur créé:', fournisseurId);
+    }
+  }
+
   // Build insert rows using only valid produits columns
   const rows = produits.map(p => ({
     nom: p.nom,
@@ -203,6 +232,7 @@ async function handleImport(body: {
     visible_catalogue: false,
     statut: 'en_attente',
     photo_statut: 'non_trouvee',
+    ...(fournisseurId ? { fournisseur_id: fournisseurId } : {}),
   }));
 
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
