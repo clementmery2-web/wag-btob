@@ -25,7 +25,7 @@ interface ProduitParse {
   poids: number | null;
 }
 
-const MAX_CHARS = 6000;
+const MAX_CHARS = 3000;
 
 /**
  * POST /api/pricing/mercuriale
@@ -122,7 +122,7 @@ async function handleParse(req: NextRequest) {
     console.log('[mercuriale] Envoi à Gemini API:', textToSend.length, 'chars (tronqué de', csvText.length, '),', totalRows, 'lignes totales');
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000); // 25s max
+    const timeout = setTimeout(() => controller.abort(), 9000); // 9s max
 
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
@@ -221,7 +221,7 @@ async function handleParse(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      console.error('[mercuriale] Timeout Gemini API (25s)');
+      console.error('[mercuriale] Timeout Gemini API (9s)');
       return NextResponse.json({ error: 'Timeout — le fichier est trop volumineux. Réessayez avec un fichier plus petit.' }, { status: 504 });
     }
     const errObj = err as Record<string, unknown>;
