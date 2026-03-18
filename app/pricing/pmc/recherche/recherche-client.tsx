@@ -340,14 +340,14 @@ ${lines.join('\n')}`;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64 bg-gray-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-gray-50 min-h-screen text-gray-900">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
