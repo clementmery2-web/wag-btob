@@ -47,13 +47,16 @@ function formatEur(n: number): string {
 }
 
 /** Normalize product names — "GENIE LESSIVE LIQUIDE" → "Génie Lessive Liquide" */
-function capitalizeNom(s: string): string {
-  if (!s) return s;
-  return s
-    .toLowerCase()
-    .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+function normalizeName(name: string): string {
+  if (!name) return '';
+  // Si plus de 60% des lettres sont en majuscules → normaliser
+  const letters = name.replace(/[^a-zA-Z]/g, '');
+  const upperCount = (name.match(/[A-Z]/g) || []).length;
+  if (letters.length > 0 && upperCount / letters.length > 0.6) {
+    return name.toLowerCase().replace(/(^\w|\s\w|[-]\w)/g,
+      c => c.toUpperCase());
+  }
+  return name;
 }
 
 function nbCartonsMin(p: CatalogueProduit): number {
@@ -347,13 +350,16 @@ export default function CataloguePage() {
                 const hasPhoto = p.photo_url && (p.photo_statut === 'validee' || p.photo_statut === 'upload_manuel' || p.photo_statut === 'auto_trouvee');
 
                 // Prix de revente estimé (×1.50) et marge
-                const pvfTTC = num(p.prix_wag_ht) * (1 + TVA_RATE);
-                const prixRevente = pvfTTC * 1.50;
-                const margeRevente = ((prixRevente - pvfTTC) / prixRevente) * 100;
+                const coutTTC = num(p.prix_wag_ht) * (1 + TVA_RATE);
+                const prixRevente = coutTTC * 1.50;
+                // Utiliser marge Supabase si disponible, sinon calculer
+                const margeRevente = num(p.marge_retail_estimee) > 0
+                  ? num(p.marge_retail_estimee)
+                  : ((prixRevente - coutTTC) / prixRevente) * 100;
 
                 // Nom normalisé
-                const nomNorm = p.nom === p.nom.toUpperCase() ? capitalizeNom(p.nom) : p.nom;
-                const marqueNorm = p.marque === p.marque.toUpperCase() ? capitalizeNom(p.marque) : p.marque;
+                const nomNorm = normalizeName(p.nom);
+                const marqueNorm = normalizeName(p.marque);
 
                 return (
                   <div key={p.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -494,8 +500,8 @@ export default function CataloguePage() {
                 const minC = nbCartonsMin(item);
                 const placeholder = categoryPlaceholder(item.categorie);
                 const hasPhoto = item.photo_url && (item.photo_statut === 'validee' || item.photo_statut === 'upload_manuel' || item.photo_statut === 'auto_trouvee');
-                const nomNorm = item.nom === item.nom.toUpperCase() ? capitalizeNom(item.nom) : item.nom;
-                const marqueNorm = item.marque === item.marque.toUpperCase() ? capitalizeNom(item.marque) : item.marque;
+                const nomNorm = normalizeName(item.nom);
+                const marqueNorm = normalizeName(item.marque);
 
                 return (
                   <div key={item.id} className="bg-gray-50 rounded-lg p-3">
