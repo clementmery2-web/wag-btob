@@ -24,10 +24,12 @@ export function NouvelleOffreClient() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Form state
+  const [flux, setFlux] = useState<string>('dropshipping');
+  const [fichier, setFichier] = useState<File | null>(null);
+
+  // Auto-detected from file by Claude
   const [fournisseur, setFournisseur] = useState('');
   const [emailFournisseur, setEmailFournisseur] = useState('');
-  const [flux, setFlux] = useState<string>('stock_wag');
-  const [fichier, setFichier] = useState<File | null>(null);
 
   // Workflow state
   const [etape, setEtape] = useState<Etape>('upload');
@@ -44,7 +46,6 @@ export function NouvelleOffreClient() {
 
   // ── ÉTAPE 1: Upload & Parse ──
   const handleAnalyse = useCallback(async () => {
-    if (!fournisseur.trim()) { setErreur('Nom du fournisseur requis'); return; }
     if (!fichier) { setErreur('Fichier requis'); return; }
 
     setErreur('');
@@ -54,7 +55,6 @@ export function NouvelleOffreClient() {
     try {
       const formData = new FormData();
       formData.append('fichier', fichier);
-      formData.append('fournisseur', fournisseur);
 
       const res = await fetch('/api/pricing/mercuriale', {
         method: 'POST',
@@ -73,6 +73,9 @@ export function NouvelleOffreClient() {
       setAlertes(data.alertes || []);
       setColonnes(data.colonnes || []);
       setNbTotal(data.nb_total || 0);
+      // Auto-fill fournisseur info from Claude detection
+      if (data.fournisseur_nom) setFournisseur(data.fournisseur_nom);
+      if (data.fournisseur_email) setEmailFournisseur(data.fournisseur_email);
       setEtape('preview');
     } catch {
       setErreur('Erreur réseau. Veuillez réessayer.');
@@ -80,7 +83,7 @@ export function NouvelleOffreClient() {
     } finally {
       setLoading(false);
     }
-  }, [fournisseur, fichier]);
+  }, [fichier]);
 
   // ── ÉTAPE 3: Import into Supabase ──
   const handleImport = useCallback(async () => {
@@ -94,7 +97,7 @@ export function NouvelleOffreClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'import',
-          fournisseur_nom: fournisseur,
+          fournisseur_nom: fournisseur || fichier?.name?.replace(/\.[^.]+$/, '') || 'Fournisseur inconnu',
           fournisseur_email: emailFournisseur,
           flux,
           produits,
@@ -116,7 +119,7 @@ export function NouvelleOffreClient() {
     } finally {
       setLoading(false);
     }
-  }, [fournisseur, emailFournisseur, flux, produits]);
+  }, [fournisseur, emailFournisseur, flux, produits, fichier]);
 
   // ── Inline edit handlers ──
   function updateProduit(index: number, col: keyof ProduitParse, value: string) {
@@ -186,42 +189,20 @@ export function NouvelleOffreClient() {
       {etape === 'upload' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5 max-w-2xl">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nom du fournisseur *</label>
-            <input
-              type="text"
-              value={fournisseur}
-              onChange={e => setFournisseur(e.target.value)}
-              placeholder="Ex: Thai Union, Bonduelle, Nutrition & Santé..."
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email / contact fournisseur</label>
-            <input
-              type="text"
-              value={emailFournisseur}
-              onChange={e => setEmailFournisseur(e.target.value)}
-              placeholder="contact@fournisseur.com"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-            />
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Flux par défaut</label>
             <select
               value={flux}
               onChange={e => setFlux(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
             >
-              <option value="stock_wag">Stock WAG (entrepôt)</option>
               <option value="dropshipping">Dropshipping</option>
+              <option value="stock_wag">Stock WAG (entrepôt)</option>
               <option value="transit">Transit</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fichier mercuriale *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fichier mercuriale</label>
             <div
               onClick={() => fileRef.current?.click()}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
@@ -256,11 +237,12 @@ export function NouvelleOffreClient() {
                 </div>
               )}
             </div>
+            <p className="text-xs text-gray-400 mt-2">Le nom du fournisseur et l&apos;email sont extraits automatiquement du fichier.</p>
           </div>
 
           <button
             onClick={handleAnalyse}
-            disabled={!fournisseur.trim() || !fichier}
+            disabled={!fichier}
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
           >
             Analyser la mercuriale
@@ -297,6 +279,15 @@ export function NouvelleOffreClient() {
               <p className="text-2xl font-bold text-indigo-600">{colonnes.length}</p>
               <p className="text-xs text-gray-500">colonnes détectées</p>
             </div>
+            {fournisseur && (
+              <>
+                <div className="w-px h-10 bg-gray-200" />
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{fournisseur}</p>
+                  <p className="text-xs text-gray-500">fournisseur détecté{emailFournisseur ? ` — ${emailFournisseur}` : ''}</p>
+                </div>
+              </>
+            )}
             <div className="flex-1" />
             <div className="text-xs text-gray-400">
               Colonnes : {colonnes.join(', ')}

@@ -45,7 +45,18 @@ Colonnes possibles dans les mercuriales :
 - EAN : 'ean', 'code barre', 'barcode', 'gtin', 'ean13'
 - Poids : 'poids', 'poids_net', 'grammage', 'contenance'
 Si une colonne est ambiguë, faire la meilleure interprétation possible.
-Retourne UNIQUEMENT un tableau JSON valide, sans explication ni markdown. Exemple: [{"ref":"...","nom":"..."}]`;
+
+Extrait aussi si possible :
+- fournisseur_nom : nom de l'entreprise fournisseur (souvent en en-tête du fichier, ou dans le nom de fichier, ou déduit des marques)
+- fournisseur_email : email de contact si présent dans le fichier
+
+Retourne UNIQUEMENT un objet JSON valide avec cette structure :
+{
+  "fournisseur_nom": string ou null,
+  "fournisseur_email": string ou null,
+  "produits": [{"ref":"...","nom":"..."}]
+}
+Pas d'explication, pas de markdown.`;
 
 /**
  * POST /api/pricing/mercuriale
@@ -130,7 +141,7 @@ async function handleParse(req: NextRequest) {
         max_tokens: 8192,
         messages: [{
           role: 'user',
-          content: `${CLAUDE_PROMPT}\n\nColonnes du fichier: ${colonnes.join(', ')}\n\nDonnées (${dataForClaude.length} lignes):\n${dataText}`,
+          content: `${CLAUDE_PROMPT}\n\nNom du fichier: ${file.name}\nColonnes du fichier: ${colonnes.join(', ')}\n\nDonnées (${dataForClaude.length} lignes):\n${dataText}`,
         }],
       }),
     });
@@ -145,13 +156,30 @@ async function handleParse(req: NextRequest) {
     const responseText = claudeData.content?.[0]?.text || '';
     console.log('[mercuriale] Réponse Claude:', responseText.length, 'chars');
 
-    // Parse JSON from Claude response
+    // Parse JSON from Claude response — expects { fournisseur_nom, fournisseur_email, produits: [...] }
     let produits: ProduitParse[];
+    let fournisseurNomDetecte: string | null = null;
+    let fournisseurEmailDetecte: string | null = null;
     try {
-      // Try to extract JSON array from response (handles potential markdown wrapping)
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error('Pas de tableau JSON trouvé');
-      produits = JSON.parse(jsonMatch[0]);
+      // Try object format first: { fournisseur_nom, fournisseur_email, produits: [...] }
+      const objMatch = responseText.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        const parsed = JSON.parse(objMatch[0]);
+        if (parsed.produits && Array.isArray(parsed.produits)) {
+          produits = parsed.produits;
+          fournisseurNomDetecte = parsed.fournisseur_nom || null;
+          fournisseurEmailDetecte = parsed.fournisseur_email || null;
+        } else if (Array.isArray(parsed)) {
+          produits = parsed;
+        } else {
+          throw new Error('Format inattendu');
+        }
+      } else {
+        // Fallback: try array format
+        const arrMatch = responseText.match(/\[[\s\S]*\]/);
+        if (!arrMatch) throw new Error('Pas de JSON trouvé');
+        produits = JSON.parse(arrMatch[0]);
+      }
     } catch (parseErr) {
       console.error('[mercuriale] Erreur parsing réponse Claude:', parseErr);
       console.error('[mercuriale] Réponse brute:', responseText.slice(0, 500));
@@ -191,6 +219,8 @@ async function handleParse(req: NextRequest) {
       nb_parses: cleanProduits.length,
       colonnes,
       alertes,
+      fournisseur_nom: fournisseurNomDetecte,
+      fournisseur_email: fournisseurEmailDetecte,
     });
   } catch (err) {
     console.error('[mercuriale] Erreur générale:', err);
