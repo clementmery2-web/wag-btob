@@ -47,13 +47,16 @@ export function OffresClient() {
 
   useEffect(() => {
     fetch('/api/pricing/offres')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(r.status === 401 ? 'Session expirée — reconnectez-vous' : `Erreur ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         setOffres(data.offres ?? []);
         setSource(data.source ?? 'supabase');
       })
-      .catch(() => {
-        setError('Impossible de charger les offres depuis Supabase');
+      .catch((err) => {
+        setError(err.message || 'Impossible de charger les offres depuis Supabase');
       })
       .finally(() => setLoading(false));
   }, []);
