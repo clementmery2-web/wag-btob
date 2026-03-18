@@ -65,15 +65,23 @@ function nbCartonsMin(p: CatalogueProduit): number {
   return Math.max(1, Math.ceil(minUnites / pcb));
 }
 
-/** Category background + emoji for products without photo */
-function categoryPlaceholder(cat: string): { bg: string; emoji: string } {
+/** Category background + text color for products without photo */
+function categoryPlaceholder(cat: string): { bg: string; textColor: string; label: string } {
   const lc = cat.toLowerCase();
-  if (lc.includes('épicerie') || lc.includes('boisson')) return { bg: 'bg-green-50', emoji: '\u{1F96B}' };
-  if (lc.includes('hygiène') || lc.includes('beauté')) return { bg: 'bg-blue-50', emoji: '\u{1F9F4}' };
-  if (lc.includes('entretien')) return { bg: 'bg-yellow-50', emoji: '\u{1F9F9}' };
-  if (lc.includes('bébé')) return { bg: 'bg-pink-50', emoji: '\u{1F37C}' };
-  if (lc.includes('animaux')) return { bg: 'bg-orange-50', emoji: '\u{1F43E}' };
-  return { bg: 'bg-gray-50', emoji: '\u{1F4E6}' };
+  if (lc.includes('épicerie') || lc.includes('boisson')) return { bg: 'bg-green-50', textColor: 'text-green-700', label: cat };
+  if (lc.includes('hygiène') || lc.includes('beauté')) return { bg: 'bg-blue-50', textColor: 'text-blue-700', label: cat };
+  if (lc.includes('entretien')) return { bg: 'bg-yellow-50', textColor: 'text-yellow-700', label: cat };
+  if (lc.includes('bébé')) return { bg: 'bg-pink-50', textColor: 'text-pink-700', label: cat };
+  if (lc.includes('animaux')) return { bg: 'bg-orange-50', textColor: 'text-orange-700', label: cat };
+  return { bg: 'bg-gray-50', textColor: 'text-gray-700', label: cat };
+}
+
+/** Extract brand initials (e.g. "Petit Navire" → "PN") */
+function brandInitials(marque: string): string {
+  if (!marque) return '?';
+  const words = marque.trim().split(/\s+/);
+  if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
+  return words.slice(0, 3).map(w => w[0]).join('').toUpperCase();
 }
 
 /** Score composite pour tri "Meilleures affaires" */
@@ -170,13 +178,12 @@ export default function CataloguePage() {
   const seuilAtteint = totalHT >= SEUIL_COMMANDE;
 
   function addToPanier(p: CatalogueProduit) {
-    const min = nbCartonsMin(p);
-    setPanier(prev => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + min }));
+    setPanier(prev => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + 1 }));
     // Don't auto-open cart — keep user browsing
   }
 
-  function updateCartons(id: string, cartons: number, minCartons: number) {
-    if (cartons < minCartons) {
+  function updateCartons(id: string, cartons: number) {
+    if (cartons < 1) {
       setPanier(prev => { const n = { ...prev }; delete n[id]; return n; });
     } else {
       setPanier(prev => ({ ...prev, [id]: cartons }));
@@ -214,9 +221,6 @@ export default function CataloguePage() {
             </div>
           </Link>
           <div className="flex items-center gap-3">
-            <Link href="/fournisseurs" className="hidden sm:inline-flex text-sm text-gray-500 hover:text-gray-900 transition-colors">
-              Vous êtes fournisseur ?&nbsp;&rarr;
-            </Link>
             <button
               onClick={() => setPanierOpen(!panierOpen)}
               className="relative bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
@@ -241,29 +245,30 @@ export default function CataloguePage() {
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.4\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }} />
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20 text-center relative z-10">
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white mb-4 leading-tight">
-            Des marques connues. Des prix impossibles.
+            Petit Navire, Calvé, Colgate, Lipton.<br />
+            Entre -50% et -75% du prix GD.
           </h1>
           <p className="text-base sm:text-xl text-white/85 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Petit Navire, Bonduelle, Gerblé, Tropicana — jusqu&apos;à -85% du prix GD.
+            Des stocks surplus et DDM courtes de marques nationales.
             <br className="hidden sm:block" />
-            Vous achetez 2&nbsp;€, vous revendez 4&nbsp;€.
+            Disponible maintenant, livré sous 5&nbsp;jours.
           </p>
 
           {/* 3 chiffres clés */}
           <div className="flex items-center justify-center gap-6 sm:gap-12 mb-8">
             <div className="text-center">
-              <p className="text-3xl sm:text-5xl font-extrabold text-white">{allProduits.length || '...'}</p>
-              <p className="text-xs sm:text-sm text-white/70 mt-1">références disponibles</p>
+              <p className="text-3xl sm:text-5xl font-extrabold text-white">103</p>
+              <p className="text-xs sm:text-sm text-white/70 mt-1">références en stock</p>
             </div>
             <div className="w-px h-12 bg-white/20" />
             <div className="text-center">
-              <p className="text-3xl sm:text-5xl font-extrabold text-white">-85%</p>
-              <p className="text-xs sm:text-sm text-white/70 mt-1">remise max vs GD</p>
+              <p className="text-3xl sm:text-5xl font-extrabold text-white">-75%</p>
+              <p className="text-xs sm:text-sm text-white/70 mt-1">remise moyenne vs GD</p>
             </div>
             <div className="w-px h-12 bg-white/20" />
             <div className="text-center">
-              <p className="text-3xl sm:text-5xl font-extrabold text-white">&times;2</p>
-              <p className="text-xs sm:text-sm text-white/70 mt-1">marge moyenne acheteurs</p>
+              <p className="text-3xl sm:text-5xl font-extrabold text-white">5j</p>
+              <p className="text-xs sm:text-sm text-white/70 mt-1">délai de livraison</p>
             </div>
           </div>
 
@@ -279,13 +284,13 @@ export default function CataloguePage() {
       {/* ═══ SECTION 2 — BARRE DE RÉASSURANCE ═══ */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-gray-600">
-          <span>Commande min. 500&nbsp;€ HT</span>
+          <span>Panier moyen client : 2&nbsp;500&nbsp;€ HT</span>
           <span className="hidden sm:inline text-gray-300">&bull;</span>
           <span>Livraison France entière</span>
           <span className="hidden sm:inline text-gray-300">&bull;</span>
           <span>Facture pro fournie</span>
           <span className="hidden sm:inline text-gray-300">&bull;</span>
-          <span className="text-orange-600 font-medium">Offre valable jusqu&apos;à épuisement des stocks</span>
+          <span className="text-orange-600 font-medium">&#x26A1; Stock limité — les meilleures offres partent vite</span>
         </div>
       </div>
 
@@ -343,7 +348,6 @@ export default function CataloguePage() {
                 const jours = joursRestants(p.ddm);
                 const cartonsInPanier = panier[p.id] ?? 0;
                 const pcb = num(p.pcb) || 1;
-                const minCartons = nbCartonsMin(p);
                 const unitesInPanier = cartonsInPanier * pcb;
                 const prixLigne = unitesInPanier * num(p.prix_wag_ht);
                 const placeholder = categoryPlaceholder(p.categorie);
@@ -369,10 +373,13 @@ export default function CataloguePage() {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.photo_url!} alt={nomNorm} className="w-full h-full object-contain p-2" />
                       ) : (
-                        <span className="text-5xl">{placeholder.emoji}</span>
+                        <div className="flex flex-col items-center">
+                          <span className={`text-3xl font-black ${placeholder.textColor}`}>{brandInitials(p.marque)}</span>
+                          <span className="text-xs text-gray-400 mt-1">{placeholder.label}</span>
+                        </div>
                       )}
                       {/* Badge remise — toujours */}
-                      <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      <span className="absolute top-2 left-2 bg-red-500 text-white text-lg font-black px-3 py-1.5 rounded-full">
                         -{Math.round(num(p.remise_pct))}%
                       </span>
                       {/* Badge DDM — seulement si pertinent */}
@@ -414,7 +421,7 @@ export default function CataloguePage() {
                           <div>
                             <div className="flex items-stretch rounded-lg border border-gray-200 overflow-hidden">
                               <button
-                                onClick={() => updateCartons(p.id, cartonsInPanier - 1, minCartons)}
+                                onClick={() => updateCartons(p.id, cartonsInPanier - 1)}
                                 className="bg-gray-100 hover:bg-gray-200 px-3 py-2 text-gray-700 font-bold text-sm transition-colors"
                               >
                                 &minus;
@@ -425,7 +432,7 @@ export default function CataloguePage() {
                                 </p>
                               </div>
                               <button
-                                onClick={() => updateCartons(p.id, cartonsInPanier + 1, minCartons)}
+                                onClick={() => updateCartons(p.id, cartonsInPanier + 1)}
                                 className="bg-green-600 hover:bg-green-700 px-3 py-2 text-white font-bold text-sm transition-colors"
                               >
                                 +
@@ -496,8 +503,6 @@ export default function CataloguePage() {
               )}
 
               {panierItems.map(item => {
-                const pcb = num(item.pcb) || 1;
-                const minC = nbCartonsMin(item);
                 const placeholder = categoryPlaceholder(item.categorie);
                 const hasPhoto = item.photo_url && (item.photo_statut === 'validee' || item.photo_statut === 'upload_manuel' || item.photo_statut === 'auto_trouvee');
                 const nomNorm = normalizeName(item.nom);
@@ -512,7 +517,7 @@ export default function CataloguePage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.photo_url!} alt={nomNorm} className="w-full h-full object-contain rounded" />
                         ) : (
-                          <span className="text-lg">{placeholder.emoji}</span>
+                          <span className={`text-xs font-black ${placeholder.textColor}`}>{brandInitials(item.marque)}</span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -523,7 +528,7 @@ export default function CataloguePage() {
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => updateCartons(item.id, item.nbCartons - 1, minC)}
+                          onClick={() => updateCartons(item.id, item.nbCartons - 1)}
                           className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100"
                         >
                           &minus;
@@ -532,7 +537,7 @@ export default function CataloguePage() {
                           {item.nbCartons} crt{item.nbCartons > 1 ? 's' : ''}
                         </span>
                         <button
-                          onClick={() => updateCartons(item.id, item.nbCartons + 1, minC)}
+                          onClick={() => updateCartons(item.id, item.nbCartons + 1)}
                           className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100"
                         >
                           +
@@ -662,6 +667,9 @@ export default function CataloguePage() {
           </div>
           <p className="text-sm text-gray-600">
             <a href="mailto:contact@willyantigaspi.fr" className="hover:text-green-600 transition-colors">contact@willyantigaspi.fr</a>
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            <Link href="/fournisseurs" className="hover:text-green-600 transition-colors">Vous êtes fournisseur ?&nbsp;&rarr;</Link>
           </p>
           <p className="text-xs text-gray-400 mt-2">CGV &bull; Mentions légales &bull; Politique de confidentialité</p>
         </div>
