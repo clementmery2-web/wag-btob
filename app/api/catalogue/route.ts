@@ -1,15 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { DEMO_CATALOGUE } from '@/app/lib/catalogue-data';
-import type { CatalogueProduit } from '@/app/lib/catalogue-data';
+import { DEMO_CATALOGUE, DEFAULT_PALLETISATION } from '@/app/lib/catalogue-data';
+import type { CatalogueProduit, FluxType } from '@/app/lib/catalogue-data';
 
 /**
  * Mapping colonnes Supabase → CatalogueProduit.
- * Supabase :  prix_vente_wag_ht, pmc_reference, remise_vs_gd, dluo, qmc
- * Interface : prix_wag_ht, prix_gd_ht, remise_pct, ddm, min_commande
+ * Calcule le QMC selon le flux physique :
+ *   stock_wag / transit → 1 carton (PCB)
+ *   dropshipping → MAX(qmc_fournisseur, 1) palette
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSupabaseToCatalogue(row: any): CatalogueProduit {
+  const flux: FluxType = row.flux || 'stock_wag';
+  const pcb = parseInt(row.pcb, 10) || 1;
+  const palletisation = parseInt(row.palletisation, 10) || DEFAULT_PALLETISATION;
+  const qmcFourn = parseInt(row.qmc_fournisseur ?? row.qmc, 10) || 1;
+  const stockDispo = parseInt(row.stock_disponible, 10) || 0;
+
+  let min_commande: number;
+  let min_commande_unite: 'carton' | 'palette';
+  let min_cartons: number;
+  let min_unites: number;
+
+  if (flux === 'dropshipping') {
+    const palettes = Math.max(qmcFourn, 1);
+    const stockEnPalettes = Math.floor(stockDispo / (palletisation * pcb));
+    if (stockEnPalettes < 1) {
+      // Stock < 1 palette → tout le stock disponible en cartons
+      min_commande_unite = 'carton';
+      min_cartons = Math.max(1, Math.ceil(stockDispo / pcb));
+      min_commande = min_cartons;
+      min_unites = stockDispo;
+    } else {
+      min_commande = palettes;
+      min_commande_unite = 'palette';
+      min_cartons = palettes * palletisation;
+      min_unites = min_cartons * pcb;
+    }
+  } else {
+    // stock_wag ou transit → 1 carton
+    min_commande = 1;
+    min_commande_unite = 'carton';
+    min_cartons = 1;
+    min_unites = pcb;
+  }
+
   return {
     id: row.id ?? '',
     nom: row.nom ?? '',
@@ -25,9 +60,16 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
     remise_pct: parseFloat(row.remise_vs_gd) || 0,
     marge_retail_estimee: parseFloat(row.marge_retail_estimee) || 0,
     ddm: row.dluo ?? '',
-    min_commande: parseInt(row.qmc, 10) || 1,
-    min_commande_unite: row.min_commande_unite ?? 'carton',
-    stock_disponible: parseInt(row.stock_disponible, 10) || 0,
+    flux,
+    pcb,
+    palletisation,
+    min_commande,
+    min_commande_unite,
+    min_cartons,
+    min_unites,
+    qmc_fournisseur: qmcFourn,
+    fournisseur_nom: row.fournisseur_nom ?? null,
+    stock_disponible: stockDispo,
     pmc_type: row.pmc_type ?? 'gd',
   };
 }

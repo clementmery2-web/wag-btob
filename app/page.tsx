@@ -58,6 +58,37 @@ export default function CataloguePage() {
   const nbArticles = panierItems.reduce((s, i) => s + i.qty, 0);
   const seuilAtteint = totalHT >= SEUIL_COMMANDE;
 
+  // Group dropshipping items by fournisseur for minimum validation
+  const fournisseurGroups = useMemo(() => {
+    const groups = new Map<string, { items: typeof panierItems; totalHT: number }>();
+    for (const item of panierItems) {
+      if (item.flux === 'dropshipping' && item.fournisseur_nom) {
+        const key = item.fournisseur_nom;
+        const existing = groups.get(key) || { items: [], totalHT: 0 };
+        existing.items.push(item);
+        existing.totalHT += item.total;
+        groups.set(key, existing);
+      }
+    }
+    return groups;
+  }, [panierItems]);
+
+  const nbFournisseurs = fournisseurGroups.size;
+  // Check if any dropshipping fournisseur doesn't meet its product minimum QMC
+  const fournisseurWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    for (const [nom, group] of fournisseurGroups) {
+      for (const item of group.items) {
+        if (item.qty < num(item.min_unites)) {
+          warnings.push(`${nom} : ${item.nom} — minimum ${num(item.min_unites)} unités (${num(item.min_cartons)} cartons)`);
+        }
+      }
+    }
+    return warnings;
+  }, [fournisseurGroups]);
+
+  const commandeBloquee = !seuilAtteint || fournisseurWarnings.length > 0;
+
   function addToPanier(id: string, min: number) {
     setPanier(prev => ({
       ...prev,
@@ -227,10 +258,18 @@ export default function CataloguePage() {
                     </span>
                   </div>
 
-                  {/* Min commande */}
-                  <p className="text-xs text-gray-400 mb-3">
-                    Min. {num(p.min_commande) || 1} {p.min_commande_unite ?? 'carton'}{num(p.min_commande) > 1 ? 's' : ''} &bull; {num(p.stock_disponible)} dispo
-                  </p>
+                  {/* Min commande — selon flux */}
+                  <div className="text-xs text-gray-400 mb-3">
+                    {p.flux === 'dropshipping' ? (
+                      <>
+                        <p>Min. {num(p.min_commande)} palette{num(p.min_commande) > 1 ? 's' : ''} &bull; {num(p.min_cartons)} cartons &bull; {num(p.min_unites)} unités</p>
+                        <p className="text-[10px] text-amber-600 mt-0.5">Expédié par le fournisseur</p>
+                      </>
+                    ) : (
+                      <p>Min. 1 carton &bull; {num(p.min_unites) || num(p.pcb) || '?'} unités</p>
+                    )}
+                    <p className="mt-0.5">{num(p.stock_disponible)} dispo</p>
+                  </div>
 
                   {/* Bouton */}
                   <div className="mt-auto">
@@ -294,18 +333,43 @@ export default function CataloguePage() {
               {panierItems.length === 0 && (
                 <p className="text-sm text-gray-500 text-center py-8">Votre panier est vide</p>
               )}
-              {panierItems.map(item => (
-                <div key={item.id} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{item.nom}</p>
-                    <p className="text-xs text-gray-500">{item.marque} — {formatEur(num(item.prix_wag_ht))} HT/u</p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">-</button>
-                    <span className="text-sm font-semibold w-6 text-center">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, item.qty + 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">+</button>
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900 w-16 text-right">{formatEur(item.total)}</span>
+
+              {/* Avertissement multi-fournisseur dropshipping */}
+              {nbFournisseurs > 1 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <p className="font-semibold">&#9888;&#65039; {nbFournisseurs} expéditions séparées — {nbFournisseurs} minimums de commande</p>
+                </div>
+              )}
+
+              {/* Avertissement QMC non atteint par fournisseur */}
+              {fournisseurWarnings.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 space-y-1">
+                  <p className="font-semibold">Minimum de commande non atteint :</p>
+                  {fournisseurWarnings.map((w, i) => (
+                    <p key={i}>&bull; {w}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Produits stock WAG / transit */}
+              {panierItems.filter(i => i.flux !== 'dropshipping').length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Stock WAG / Transit</p>
+                  {panierItems.filter(i => i.flux !== 'dropshipping').map(item => (
+                    <PanierItemRow key={item.id} item={item} updateQty={updateQty} formatEur={formatEur} num={num} />
+                  ))}
+                </div>
+              )}
+
+              {/* Produits dropshipping — groupés par fournisseur */}
+              {Array.from(fournisseurGroups.entries()).map(([fournisseur, group]) => (
+                <div key={fournisseur}>
+                  <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider mb-2">
+                    Expédié par {fournisseur}
+                  </p>
+                  {group.items.map(item => (
+                    <PanierItemRow key={item.id} item={item} updateQty={updateQty} formatEur={formatEur} num={num} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -336,10 +400,14 @@ export default function CataloguePage() {
               {!commandeOpen ? (
                 <button
                   onClick={() => setCommandeOpen(true)}
-                  disabled={!seuilAtteint}
+                  disabled={commandeBloquee}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-bold py-3 rounded-lg transition-colors"
                 >
-                  {seuilAtteint ? 'Commander →' : `Minimum ${formatEur(SEUIL_COMMANDE)} HT requis`}
+                  {!seuilAtteint
+                    ? `Minimum ${formatEur(SEUIL_COMMANDE)} HT requis`
+                    : fournisseurWarnings.length > 0
+                      ? 'Minimum fournisseur non atteint'
+                      : 'Commander →'}
                 </button>
               ) : commandeEnvoyee ? (
                 <div className="text-center py-4">
@@ -412,6 +480,29 @@ export default function CataloguePage() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Ligne produit dans le panier latéral */
+function PanierItemRow({ item, updateQty, formatEur: fmtEur, num: n }: {
+  item: CatalogueProduit & { qty: number; total: number };
+  updateQty: (id: string, qty: number) => void;
+  formatEur: (n: number) => string;
+  num: (v: unknown) => number;
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-3 mb-2">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900 truncate">{item.nom}</p>
+        <p className="text-xs text-gray-500">{item.marque} — {fmtEur(n(item.prix_wag_ht))} HT/u</p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">-</button>
+        <span className="text-sm font-semibold w-6 text-center">{item.qty}</span>
+        <button onClick={() => updateQty(item.id, item.qty + 1)} className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-100">+</button>
+      </div>
+      <span className="text-sm font-semibold text-gray-900 w-16 text-right">{fmtEur(item.total)}</span>
     </div>
   );
 }
