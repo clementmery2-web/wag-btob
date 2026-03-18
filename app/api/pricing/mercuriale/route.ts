@@ -28,19 +28,34 @@ const COLUMN_PATTERNS: Record<string, RegExp> = {
   nom: /nom|d[ée]sign|libell[ée]|produit|article/i,
   marque: /marque|brand|fabricant/i,
   ean: /ean|gtin|code.?bar/i,
-  prix: /prix|pa\.?ht|tarif|achat|cost|p\.?u/i,
   pcb: /pcb|colis|colisage|lot|uvs/i,
   stock: /stock|qt[ée]|quantit[ée]|dispo/i,
   ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
   poids: /poids|kg|gramm|weight|net/i,
   tva: /tva|taxe/i,
+  pmc_ht: /pmc|prix\s*moyen\s*constat[ée]/i,
 };
+
+// prix_achat_wag_ht patterns in priority order (first match wins)
+const PRIX_PATTERNS: RegExp[] = [
+  /prix\s*anti[\s-]?gaspi|anti[\s-]?gaspi/i,
+  /prix\s*achat|pa[\s.]?ht|achat[\s.]?ht/i,
+  /prix|tarif|cost|p\.?u/i,
+];
 
 function matchColumns(headers: string[]): Record<string, number> {
   const mapping: Record<string, number> = {};
   for (const [field, pattern] of Object.entries(COLUMN_PATTERNS)) {
     const idx = headers.findIndex(h => pattern.test(h));
     if (idx !== -1) mapping[field] = idx;
+  }
+  // Match prix with priority: antigaspi > prix achat/pa ht > prix generic
+  for (const pattern of PRIX_PATTERNS) {
+    const idx = headers.findIndex(h => pattern.test(h));
+    if (idx !== -1) {
+      mapping.prix = idx;
+      break;
+    }
   }
   return mapping;
 }
