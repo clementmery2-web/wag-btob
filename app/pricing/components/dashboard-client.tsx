@@ -1,4 +1,5 @@
 'use client';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { DEMO_OFFRES, DEMO_ACTIONS, DEMO_ALERTES, getDemoKPIs } from '../lib/demo-data';
 import { formatEur, formatPct } from '../lib/types';
@@ -7,6 +8,16 @@ export function DashboardClient() {
   const kpis = getDemoKPIs();
   const alertes = DEMO_ALERTES;
   const actions = DEMO_ACTIONS.slice(0, 10);
+  const [photosAVerifier, setPhotosAVerifier] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/pricing/photos')
+      .then(r => r.json())
+      .then(data => {
+        if (data.stats) setPhotosAVerifier(data.stats.a_verifier ?? 0);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -19,6 +30,23 @@ export function DashboardClient() {
           Voir les offres →
         </Link>
       </div>
+
+      {/* Alerte photos */}
+      {photosAVerifier > 0 && (
+        <Link href="/pricing/photos" className="block">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 hover:bg-amber-100 transition-colors">
+            <span className="inline-flex items-center justify-center w-8 h-8 bg-amber-100 text-amber-600 rounded-full text-lg">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+              </svg>
+            </span>
+            <div>
+              <p className="text-sm font-bold text-amber-800">{photosAVerifier} photo{photosAVerifier > 1 ? 's' : ''} a verifier</p>
+              <p className="text-xs text-amber-600">Cliquez pour gerer les photos produits →</p>
+            </div>
+          </div>
+        </Link>
+      )}
 
       {/* Alertes */}
       {alertes.length > 0 && (

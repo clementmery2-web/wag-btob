@@ -1,7 +1,7 @@
 'use client';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { CATEGORIES } from './lib/catalogue-data';
+import { CATEGORIES, CATEGORY_EMOJI } from './lib/catalogue-data';
 import type { CatalogueProduit } from './lib/catalogue-data';
 
 const SEUIL_COMMANDE = 500;
@@ -188,9 +188,12 @@ export default function CataloguePage() {
               <div key={p.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
                 {/* Photo */}
                 <div className="bg-gray-100 h-36 flex items-center justify-center relative">
-                  <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M18 13.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+                  {p.photo_url && (p.photo_statut === 'validee' || p.photo_statut === 'upload_manuel' || p.photo_statut === 'auto_trouvee') ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.photo_url} alt={p.nom} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-4xl">{CATEGORY_EMOJI[p.categorie] || '\u{1F4E6}'}</span>
+                  )}
                   {/* Badge remise */}
                   <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                     -{Math.round(num(p.remise_pct))}%
