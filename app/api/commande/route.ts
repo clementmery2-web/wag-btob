@@ -41,7 +41,7 @@ interface CommandeBody {
  * CREATE TABLE IF NOT EXISTS commandes (
  *   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
  *   email_acheteur text NOT NULL,
- *   telephone_acheteur text NOT NULL,
+ *   telephone_acheteur text,
  *   note text,
  *   total_ht numeric NOT NULL,
  *   remise_pct numeric DEFAULT 0,
@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
   const { email, telephone, note, produits, total_ht, remise_pct, total_apres_remise_ht } = body;
 
   // Validation
-  if (!email || !telephone) {
-    return NextResponse.json({ error: 'Email et téléphone requis' }, { status: 400 });
+  if (!email) {
+    return NextResponse.json({ error: 'Email requis' }, { status: 400 });
   }
   if (!Array.isArray(produits) || produits.length === 0) {
     return NextResponse.json({ error: 'Au moins un produit requis' }, { status: 400 });
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     .from('commandes')
     .insert({
       email_acheteur: email,
-      telephone_acheteur: telephone,
+      telephone_acheteur: telephone || null,
       note: note || null,
       total_ht,
       remise_pct,

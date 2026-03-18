@@ -801,8 +801,7 @@ export default function CataloguePage() {
                   />
                   <input
                     type="tel"
-                    required
-                    placeholder="Téléphone"
+                    placeholder="Téléphone (optionnel)"
                     value={telephone}
                     onChange={e => setTelephone(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
