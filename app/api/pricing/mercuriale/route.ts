@@ -38,7 +38,7 @@ const COLUMN_PATTERNS: Record<string, RegExp> = {
 
 // prix_achat_wag_ht patterns in priority order (first match wins)
 const PRIX_PATTERNS: RegExp[] = [
-  /prix\s*anti[\s-]?gaspi|anti[\s-]?gaspi/i,
+  /prix\s*anti[\s-]*gaspi/i,
   /prix\s*achat|pa[\s.]?ht|achat[\s.]?ht/i,
   /prix|tarif|cost|p\.?u/i,
 ];
