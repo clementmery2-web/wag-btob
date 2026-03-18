@@ -145,6 +145,7 @@ async function handleParse(req: NextRequest) {
 
   // 2. Send CSV text to Claude API (pas de binaire)
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  console.log('[mercuriale] API Key present:', !!apiKey, 'length:', apiKey?.length);
   if (!apiKey) {
     console.error('[mercuriale] ANTHROPIC_API_KEY manquante');
     return NextResponse.json({ error: 'Clé API Claude non configurée' }, { status: 500 });
@@ -166,7 +167,7 @@ async function handleParse(req: NextRequest) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4000,
         messages: [{
           role: 'user',
@@ -179,7 +180,7 @@ async function handleParse(req: NextRequest) {
 
     if (!claudeRes.ok) {
       const errText = await claudeRes.text();
-      console.error('[mercuriale] Claude API error:', claudeRes.status, errText);
+      console.log('[mercuriale] Claude API error:', { status: claudeRes.status, body: errText });
       return NextResponse.json({ error: `Erreur Claude API: ${claudeRes.status}` }, { status: 500 });
     }
 
