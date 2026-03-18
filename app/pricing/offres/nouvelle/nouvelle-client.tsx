@@ -320,7 +320,7 @@ export function NouvelleOffreClient() {
                     <th className="text-center px-3 py-2.5 font-semibold text-gray-500 w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 text-gray-900">
                   {produits.map((p, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-400 text-xs">{i + 1}</td>

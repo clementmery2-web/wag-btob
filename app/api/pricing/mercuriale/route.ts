@@ -104,7 +104,7 @@ async function handleParse(req: NextRequest) {
       console.log('[mercuriale] Feuille', sheetName, '— colonnes mappées:', colMap);
 
       // Try to detect supplier name from sheet name or first cell area
-      if (!fournisseurNomDetecte && sheetName && !/sheet|feuil/i.test(sheetName)) {
+      if (!fournisseurNomDetecte && sheetName && !/airtable|sheet|feuil|csv/i.test(sheetName)) {
         fournisseurNomDetecte = sheetName;
       }
 
@@ -139,6 +139,11 @@ async function handleParse(req: NextRequest) {
   } catch (err) {
     console.error('[mercuriale] Erreur parsing Excel:', err);
     return NextResponse.json({ error: 'Impossible de lire le fichier Excel' }, { status: 400 });
+  }
+
+  // Fallback: if sheet name was generic, use first product's marque
+  if (!fournisseurNomDetecte && cleanProduits.length > 0 && cleanProduits[0].marque) {
+    fournisseurNomDetecte = cleanProduits[0].marque;
   }
 
   if (totalRows === 0) {
@@ -205,7 +210,7 @@ async function handleImport(body: {
     } else {
       const { data: created, error: createErr } = await supabase
         .from('fournisseurs')
-        .insert({ nom: fournisseur_nom, statut: 'actif' })
+        .insert({ nom: fournisseur_nom, statut: 'actif', email: 'contact@' + fournisseur_nom.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com' })
         .select('id')
         .single();
 
