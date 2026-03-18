@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { verifySession } from '@/app/pricing/lib/auth';
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -9,20 +9,9 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function verifySessionCookie(): boolean {
-  try {
-    const cookieStore = cookies();
-    const session = cookieStore.get('wag_pricing_session');
-    if (!session?.value) return false;
-    const decoded = JSON.parse(Buffer.from(session.value, 'base64').toString('utf-8'));
-    return decoded.expires > Date.now();
-  } catch {
-    return false;
-  }
-}
-
 export async function GET() {
-  if (!verifySessionCookie()) {
+  const auth = await verifySession();
+  if (!auth) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
@@ -45,7 +34,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!verifySessionCookie()) {
+  const auth = await verifySession();
+  if (!auth) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
   }
 
