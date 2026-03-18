@@ -197,7 +197,7 @@ async function handleImport(body: {
     prix_achat_ht: p.prix_achat_ht,
     stock: p.stock,
     flux: flux === 'stock_wag' ? 'entrepot' : flux,
-    ddm: p.ddm || null,
+    dluo: p.ddm || null,
     tva: p.tva,
     pcb: p.pcb,
     visible_catalogue: false,
