@@ -48,6 +48,10 @@ export function PhotosClient() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Validate all state
+  const [showValidateConfirm, setShowValidateConfirm] = useState(false);
+  const [validating, setValidating] = useState(false);
+
   // Batch search state
   const [searching, setSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
@@ -155,6 +159,21 @@ export function PhotosClient() {
     abortRef.current = true;
   }
 
+  async function handleValidateAllAuto() {
+    setValidating(true);
+    setShowValidateConfirm(false);
+    try {
+      await fetch('/api/pricing/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate_all_auto' }),
+      });
+      await fetchProduits();
+    } finally {
+      setValidating(false);
+    }
+  }
+
   async function handleUpload(productId: string, file: File) {
     setActionLoading(productId);
     try {
@@ -182,28 +201,76 @@ export function PhotosClient() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Gestion des photos produits</h1>
-        {!searching ? (
-          <button
-            onClick={handleSearchAll}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            Rechercher toutes les photos
-          </button>
-        ) : (
-          <button
-            onClick={handleStopSearch}
-            className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-            </svg>
-            Arrêter
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {stats.a_verifier > 0 && !searching && (
+            <button
+              onClick={() => setShowValidateConfirm(true)}
+              disabled={validating}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+            >
+              {validating ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>&#x2705;</span>
+              )}
+              {validating ? 'Validation...' : 'Tout valider'}
+            </button>
+          )}
+          {!searching ? (
+            <button
+              onClick={handleSearchAll}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              Rechercher toutes les photos
+            </button>
+          ) : (
+            <button
+              onClick={handleStopSearch}
+              className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+              </svg>
+              Arrêter
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Confirmation dialog */}
+      {showValidateConfirm && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <p className="text-sm text-green-800 font-medium mb-3">
+            Valider les {stats.a_verifier} photo{stats.a_verifier > 1 ? 's' : ''} trouvée{stats.a_verifier > 1 ? 's' : ''} automatiquement ?
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleValidateAllAuto}
+              className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              Confirmer
+            </button>
+            <button
+              onClick={() => setShowValidateConfirm(false)}
+              className="bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold px-4 py-2 rounded-lg border border-gray-200 transition-colors"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Workflow hint */}
+      {stats.a_verifier > 0 && !searching && !showValidateConfirm && !validating && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <p className="text-sm text-amber-800">
+            <strong>Workflow :</strong> 1. Rejetez les photos incorrectes &mdash; 2. Cliquez <strong>Tout valider</strong> pour approuver le reste
+          </p>
+        </div>
+      )}
 
       {/* Search progress bar */}
       {searching && (

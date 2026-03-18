@@ -196,6 +196,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ...result });
   }
 
+  if (action === 'validate_all_auto') {
+    const { data: updated, error } = await supabase
+      .from('produits')
+      .update({ photo_statut: 'validee' })
+      .eq('photo_statut', 'auto_trouvee')
+      .select('id');
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, validated: (updated ?? []).length });
+  }
+
   if (action === 'search_batch') {
     const productIds: string[] = body.product_ids;
     if (!Array.isArray(productIds) || productIds.length === 0) {
