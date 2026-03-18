@@ -171,27 +171,33 @@ export async function POST(req: NextRequest) {
   // 4. Envoi emails via Resend (non bloquant)
   const resend = getResend();
   if (resend) {
-    const produitsHtml = produits.map(p =>
+    const produitsInterneHtml = produits.map(p =>
       `<li>${p.nom} &times; ${p.nb_cartons} cartons (${p.nb_unites} UVC) &mdash; ${p.total_ligne_ht.toFixed(2)}&euro; HT</li>`
     ).join('');
 
-    // Email interne
+    const produitsClientHtml = produits.map(p =>
+      `<li>${p.nom} &times; ${p.nb_cartons} cartons &mdash; ${p.total_ligne_ht.toFixed(2)}&euro; HT</li>`
+    ).join('');
+
+    // Email 1 — interne
     try {
       const contactEmail = process.env.CONTACT_EMAIL;
       if (contactEmail) {
         await resend.emails.send({
           from: 'WAG BtoB <onboarding@resend.dev>',
           to: contactEmail,
-          subject: `\u{1F6D2} Nouvelle commande ${numero} — ${Math.round(total_apres_remise_ht)}€ HT`,
+          subject: `🛒 Nouvelle commande WAG — ${total_ht.toFixed(2)}€ HT`,
           html: `
-            <h2>Nouvelle commande re\u00e7ue</h2>
+            <h2>Nouvelle commande reçue</h2>
             <p><strong>Client :</strong> ${email}</p>
-            <p><strong>T\u00e9l\u00e9phone :</strong> ${telephone || 'Non renseign\u00e9'}</p>
-            <p><strong>Total :</strong> ${total_apres_remise_ht.toFixed(2)}\u20ac HT</p>
-            <p><strong>Num\u00e9ro :</strong> ${numero}</p>
-            ${note ? `<p><strong>Note :</strong> ${note}</p>` : ''}
-            <ul>${produitsHtml}</ul>
-            <a href="https://wag-btob.vercel.app/pricing">Voir le back-office \u2192</a>
+            <p><strong>Total :</strong> ${total_ht.toFixed(2)}€ HT</p>
+            <hr/>
+            <h3>Produits :</h3>
+            <ul>${produitsInterneHtml}</ul>
+            <hr/>
+            <p><strong>Note :</strong> ${note || 'Aucune'}</p>
+            <p><strong>Numéro :</strong> ${numero}</p>
+            <p><a href="https://wag-btob.vercel.app/pricing">Voir le back-office →</a></p>
           `,
         });
         console.log('[commande] Email interne envoyé à', contactEmail);
@@ -200,19 +206,22 @@ export async function POST(req: NextRequest) {
       console.error('[commande] Erreur email interne :', err instanceof Error ? err.message : err);
     }
 
-    // Email confirmation acheteur
+    // Email 2 — confirmation acheteur
     try {
       await resend.emails.send({
         from: 'Willy Anti-gaspi <onboarding@resend.dev>',
         to: email,
-        subject: `\u2705 Commande ${numero} re\u00e7ue — Willy Anti-gaspi`,
+        subject: `✅ Commande ${numero} reçue — Willy Anti-gaspi`,
         html: `
-          <h2>Votre commande a bien \u00e9t\u00e9 re\u00e7ue !</h2>
-          <p>Num\u00e9ro de commande : <strong>${numero}</strong></p>
-          <p>Total : <strong>${total_apres_remise_ht.toFixed(2)}\u20ac HT</strong></p>
-          <ul>${produitsHtml}</ul>
-          <p>Notre \u00e9quipe vous recontacte sous 2h pour confirmer votre commande.</p>
-          <p>\u00c0 tr\u00e8s vite,<br/>L\u2019\u00e9quipe Willy Anti-gaspi</p>
+          <h2>Votre commande a bien été reçue !</h2>
+          <p>Bonjour,</p>
+          <p>Nous avons bien reçu votre commande <strong>${numero}</strong> d'un montant de <strong>${total_ht.toFixed(2)}€ HT</strong>.</p>
+          <p>Notre équipe vous recontacte sous 2h pour confirmer et organiser la livraison.</p>
+          <h3>Récapitulatif :</h3>
+          <ul>${produitsClientHtml}</ul>
+          <p><strong>Total HT : ${total_ht.toFixed(2)}€</strong></p>
+          <br/>
+          <p>À très vite,<br/>L'équipe Willy Anti-gaspi</p>
         `,
       });
       console.log('[commande] Email confirmation envoyé à', email);
