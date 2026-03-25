@@ -64,7 +64,7 @@ export async function GET() {
   const activite = (activiteRecente ?? []).map(o => ({
     id: o.id,
     type: o.statut === 'nouvelle' ? 'offre_recue' : 'traitement',
-    description: `Offre ${o.fournisseur_nom ?? 'fournisseur inconnu'} — ${o.nb_produits ?? 0} produit(s)`,
+    description: `Offre ${o.source ?? o.fournisseur_nom ?? 'Fournisseur sans nom'} — ${o.nb_produits ?? 0} produit(s)`,
     created_at: o.created_at,
   }));
 
