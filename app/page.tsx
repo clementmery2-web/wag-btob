@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase-client';
 import type { CatalogueProduit } from './lib/catalogue-data';
 
 const SEUIL_COMMANDE = 500;
@@ -206,9 +207,55 @@ export default function CataloguePage() {
   const fetchProduits = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/catalogue');
-      const data = await res.json();
-      setAllProduits(data.produits ?? []);
+      const { data, error } = await supabase
+        .from('produits')
+        .select('*')
+        .eq('statut', 'en_ligne');
+
+      if (error || !data || data.length === 0) {
+        // Fallback API si Supabase vide ou erreur
+        const res = await fetch('/api/catalogue');
+        const json = await res.json();
+        setAllProduits(json.produits ?? []);
+      } else {
+        // Mapper les champs Supabase vers CatalogueProduit
+        const mapped = data.map((row): CatalogueProduit & { created_at?: string } => {
+          const prixWag = Number(row.prix_wag_ht) || 0;
+          const pmc = Number(row.pmc) || 0;
+          const remise = pmc > 0 ? Math.round((1 - prixWag / pmc) * 100) : 0;
+          return {
+            id: row.id,
+            nom: row.nom ?? '',
+            marque: row.marque ?? '',
+            photo_url: null,
+            photo_statut: 'non_trouvee',
+            photo_source: null,
+            ean: row.ean ?? null,
+            categorie: row.categorie ?? '',
+            contenance: '',
+            prix_wag_ht: prixWag,
+            prix_gd_ht: pmc,
+            remise_pct: remise,
+            marge_retail_estimee: remise > 0 ? remise : 0,
+            ddm: row.ddm ?? '',
+            flux: (row.flux as CatalogueProduit['flux']) || 'dropshipping',
+            pcb: row.quantite_minimum ?? 1,
+            palletisation: 40,
+            min_commande: 1,
+            min_commande_unite: 'carton',
+            min_cartons: 1,
+            min_unites: row.quantite_minimum ?? 1,
+            qmc_fournisseur: 1,
+            fournisseur_nom: null,
+            stock_disponible: row.quantite_disponible ?? 0,
+            pmc_type: 'gd',
+            tva_taux: Number(row.tva_taux) || 5.5,
+            prix_revente_conseille_ttc: null,
+            created_at: row.created_at,
+          };
+        });
+        setAllProduits(mapped);
+      }
     } catch {
       setAllProduits([]);
     } finally {
@@ -610,7 +657,11 @@ export default function CataloguePage() {
 
             {produits.length === 0 && (
               <div className="text-center py-16">
-                <p className="text-gray-500">Aucun produit dans cette catégorie pour le moment.</p>
+                <p className="text-gray-500">
+                  {allProduits.length === 0
+                    ? 'Catalogue en cours de mise à jour'
+                    : 'Aucun produit dans cette catégorie pour le moment.'}
+                </p>
               </div>
             )}
           </>
