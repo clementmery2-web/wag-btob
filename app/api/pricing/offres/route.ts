@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     return {
       id: o.id,
-      fournisseur: o.fournisseur_nom ?? '-',
+      fournisseur: o.source ?? o.fournisseur_nom ?? 'Sans nom',
       date_reception: o.created_at,
       nb_produits: o.nb_produits ?? 0,
       ddm_min: o.ddm_min ?? new Date().toISOString(),
