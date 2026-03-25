@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { DEMO_CATALOGUE, DEFAULT_PALLETISATION } from '@/app/lib/catalogue-data';
 import type { CatalogueProduit, FluxType } from '@/app/lib/catalogue-data';
 
@@ -140,84 +140,29 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
 export async function GET(req: NextRequest) {
   const categorie = req.nextUrl.searchParams.get('categorie');
 
-  // Try Supabase first
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Supabase via supabaseAdmin (service role, bypasse RLS)
+  try {
+    let query = supabaseAdmin
+      .from('produits')
+      .select('*')
+      .eq('statut', 'valide')
+      .order('created_at', { ascending: false });
 
-  if (url && key) {
-    try {
-      console.log('[catalogue] Connexion Supabase :', url);
-      const supabase = createClient(url, key);
-
-      // First: check if table exists and has any visible products at all
-      const { count, error: countError } = await supabase
-        .from('produits')
-        .select('*', { count: 'exact', head: true })
-        .eq('visible_catalogue', true);
-
-      if (countError) {
-        console.error('[catalogue] Erreur Supabase (count) :', countError.message, countError.code, countError.details);
-        // Fall through to demo
-      } else {
-        console.log('[catalogue] Produits visible_catalogue=true dans Supabase :', count);
-
-        if (count && count > 0) {
-          // Supabase has data — query with optional category filter
-          let query = supabase
-            .from('produits')
-            .select('*')
-            .eq('visible_catalogue', true)
-            .order('created_at', { ascending: false });
-
-          if (categorie && categorie !== 'Tout') {
-            query = query.eq('categorie', categorie);
-          }
-
-          const { data, error } = await query;
-
-          if (error) {
-            console.error('[catalogue] Erreur Supabase (query) :', error.message, error.code, error.details);
-          } else {
-            console.log('[catalogue] Supabase retourne', data?.length ?? 0, 'produits');
-            if (data && data.length > 0) {
-              console.log('[catalogue] Colonnes premier produit :', Object.keys(data[0]).join(', '));
-            }
-            const mapped = (data ?? []).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
-            // Debug logs
-            if (data && data[0]) {
-              const p = data[0];
-              const qmc = Math.max(1, parseInt(p.qmc, 10) || parseInt(p.pcb, 10) || 1);
-              const stockVal = parseInt(p.stock_disponible, 10) || 0;
-              const maxCart = Math.floor(stockVal / qmc);
-              console.log('[catalogue] Marge debug:', {
-                nom: p.nom?.slice(0, 30),
-                prix_wag_ht: p.prix_vente_wag_ht,
-                prix_revente_supabase: p.prix_revente_conseille_ttc,
-                marge_supabase: p.marge_retail_estimee,
-                tva: p.tva_taux,
-              });
-              console.log('[catalogue] Stock debug:', {
-                stock: p.stock_disponible,
-                pcb: p.qmc,
-                max_cartons: maxCart,
-              });
-            }
-            console.log('[catalogue] Catégories:', [...new Set(mapped.map(p => p.categorie))]);
-            return NextResponse.json({ produits: mapped, source: 'supabase' });
-          }
-        } else {
-          console.log('[catalogue] Supabase OK mais 0 produits visible_catalogue=true — fallback démo');
-        }
-      }
-    } catch (err) {
-      console.error('[catalogue] Exception Supabase :', err instanceof Error ? err.message : err);
+    if (categorie && categorie !== 'Tout') {
+      query = query.eq('categorie', categorie);
     }
-  } else {
-    console.log('[catalogue] Variables Supabase manquantes — NEXT_PUBLIC_SUPABASE_URL:', !!url, 'NEXT_PUBLIC_SUPABASE_ANON_KEY:', !!key);
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const mapped = (data).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
+      return NextResponse.json({ produits: mapped, source: 'supabase' });
+    }
+  } catch (err) {
+    console.error('[catalogue] Exception Supabase :', err instanceof Error ? err.message : err);
   }
 
   // Fallback to demo data
-  console.log('[catalogue] Utilisation des données de démo');
   let produits = [...DEMO_CATALOGUE];
   if (categorie && categorie !== 'Tout') {
     produits = produits.filter(p => p.categorie === categorie);

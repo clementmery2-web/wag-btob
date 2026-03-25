@@ -20,11 +20,11 @@ export async function GET() {
     supabaseAdmin
       .from('produits')
       .select('*', { count: 'exact', head: true })
-      .eq('statut', 'en_ligne'),
+      .eq('statut', 'valide'),
     supabaseAdmin
       .from('produits')
       .select('prix_achat_ht, prix_wag_ht, quantite_disponible')
-      .eq('statut', 'en_ligne'),
+      .eq('statut', 'valide'),
     supabaseAdmin
       .from('produits_offres')
       .select('*')
