@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { verifySession } from '@/app/pricing/lib/auth';
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function PATCH(
   req: NextRequest,
@@ -17,35 +10,46 @@ export async function PATCH(
   if (!auth) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
   const { id } = await params;
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
-  }
-
   const body = await req.json();
-  const allowedFields = ['statut', 'prix_vente_wag_ht', 'pmc_ttc_gd', 'pmc_ht', 'pmc_statut', 'k_dluo', 'scenario', 'prix_achat_wag_ht'];
 
-  const updates: Record<string, unknown> = {};
-  for (const field of allowedFields) {
-    if (field in body) {
-      updates[field] = body[field];
+  // Tenter la mise à jour sur produits d'abord
+  const allowedProduitFields = ['statut', 'prix_wag_ht', 'pmc', 'tva_taux'];
+  const produitUpdates: Record<string, unknown> = {};
+  for (const field of allowedProduitFields) {
+    if (field in body) produitUpdates[field] = body[field];
+  }
+  // Mapper les anciens noms de champs
+  if ('prix_vente_wag_ht' in body) produitUpdates.prix_wag_ht = body.prix_vente_wag_ht;
+  if ('prix_achat_wag_ht' in body) produitUpdates.prix_achat_ht = body.prix_achat_wag_ht;
+
+  if (Object.keys(produitUpdates).length > 0) {
+    produitUpdates.updated_at = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from('produits')
+      .update(produitUpdates)
+      .eq('id', id);
+
+    if (!error) {
+      return NextResponse.json({ success: true });
     }
   }
 
-  if (Object.keys(updates).length === 0) {
-    return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 });
-  }
+  // Si pas dans produits, tenter sur produits_offres
+  const offreUpdates: Record<string, unknown> = {};
+  if ('statut' in body) offreUpdates.statut = body.statut === 'valide' ? 'traitee' : body.statut;
+  if ('note_operateur' in body) offreUpdates.note_operateur = body.note_operateur;
 
-  updates.updated_at = new Date().toISOString();
+  if (Object.keys(offreUpdates).length > 0) {
+    offreUpdates.updated_at = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from('produits_offres')
+      .update(offreUpdates)
+      .eq('id', id);
 
-  const { error } = await supabase
-    .from('produits')
-    .update(updates)
-    .eq('id', id);
-
-  if (error) {
-    console.error('[produits PATCH] Supabase error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[produits PATCH] Supabase error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ success: true });
