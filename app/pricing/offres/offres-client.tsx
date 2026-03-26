@@ -235,7 +235,7 @@ export function OffresClient() {
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <Link
-                          href={`/pricing/traitement/${offre.id}`}
+                          href="/pricing/validation-pricing"
                           className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
                         >
                           Traiter
