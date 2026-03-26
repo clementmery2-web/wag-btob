@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { MeilleureOffre } from '@/components/MeilleureOffre'
 import { supabase } from '@/lib/supabase-client'
 
@@ -24,18 +24,11 @@ interface Produit {
 
 interface LigneOffre {
   produit: Produit
-  coche: boolean
   prixOffre: number | null
   quantite: number | null
 }
 
-// ─── Helpers ──────────────────────────────────────────────────
-
-const getJours = (ddm: string | null): number | null => {
-  if (!ddm) return null
-  const j = Math.ceil((new Date(ddm).getTime() - Date.now()) / 86400000)
-  return j
-}
+// ─── Helpers (hors composant) ─────────────────────────────────
 
 const getDdmBadge = (jours: number | null) => {
   if (jours === null) return { label: '\u2014', cls: 'bg-gray-100 text-gray-500' }
@@ -45,18 +38,6 @@ const getDdmBadge = (jours: number | null) => {
   return { label: `${jours}j`, cls: 'bg-green-100 text-green-700' }
 }
 
-const getExpireLabel = (ddm: string | null): string => {
-  const j = getJours(ddm)
-  if (j === null || j <= 0) return 'Expire dans 48h'
-  if (j < 15) return 'Expire dans 6h'
-  if (j < 30) return 'Expire dans 24h'
-  return 'Expire dans 48h'
-}
-
-const getQmc = (p: Produit): number => p.qmc ?? p.pcb ?? 1
-
-const getGroupeKey = (p: Produit) => p.fournisseur_nom || p.marque || 'Autres'
-
 const formatEur = (n: number): string =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n)
 
@@ -65,7 +46,8 @@ const formatEur = (n: number): string =>
 export default function OffresPage() {
   const [lignesOffre, setLignesOffre] = useState<LigneOffre[]>([])
   const [loadingData, setLoadingData] = useState(true)
-  const [enseigne, setEnseigne] = useState('')
+  const [prenomNom, setPrenomNom] = useState('')
+  const [nomEnseigne, setNomEnseigne] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [confirmation, setConfirmation] = useState(false)
@@ -75,7 +57,8 @@ export default function OffresPage() {
 
   // Charger coordonnees memorisees
   useEffect(() => {
-    setEnseigne(localStorage.getItem('wag_enseigne') || '')
+    setPrenomNom(localStorage.getItem('wag_prenom_nom') || '')
+    setNomEnseigne(localStorage.getItem('wag_nom_enseigne') || '')
     setEmail(localStorage.getItem('wag_email') || '')
   }, [])
 
@@ -84,27 +67,72 @@ export default function OffresPage() {
     fetch('/api/catalogue')
       .then(r => r.json())
       .then(data => {
-        const prods: Produit[] = (data.produits ?? data).map((p: Produit) => ({
-          id: p.id,
-          nom: p.nom,
-          marque: p.marque,
-          fournisseur_nom: p.fournisseur_nom ?? null,
-          ean: p.ean ?? null,
-          categorie: p.categorie ?? null,
-          prix_wag_ht: p.prix_wag_ht ?? 0,
-          ddm: p.ddm ?? null,
-          pcb: p.pcb ?? null,
-          qmc: (p as Produit & { qmc?: number }).qmc ?? p.pcb ?? null,
-          stock_disponible: p.stock_disponible ?? null,
-          remise_pct: p.remise_pct ?? null,
-          flux: p.flux ?? null,
-        }))
-        setLignesOffre(prods.map(p => ({ produit: p, coche: false, prixOffre: null, quantite: null })))
+        setLignesOffre((data.produits ?? data).map((p: Produit) => ({
+          produit: {
+            id: p.id,
+            nom: p.nom,
+            marque: p.marque,
+            fournisseur_nom: p.fournisseur_nom ?? null,
+            ean: p.ean ?? null,
+            categorie: p.categorie ?? null,
+            prix_wag_ht: p.prix_wag_ht ?? 0,
+            ddm: p.ddm ?? null,
+            pcb: p.pcb ?? null,
+            qmc: p.qmc ?? p.pcb ?? null,
+            stock_disponible: p.stock_disponible ?? null,
+            remise_pct: p.remise_pct ?? null,
+            flux: p.flux ?? null,
+          },
+          prixOffre: null,
+          quantite: null,
+        })))
       })
       .finally(() => setLoadingData(false))
   }, [])
 
-  // Filtres
+  // ─── Fonctions utilitaires ──────────────────────────────────
+
+  const getGroupeKey = (p: Produit): string =>
+    p.fournisseur_nom || p.marque || 'Autres'
+
+  const getQmc = (p: Produit): number => p.qmc ?? 1
+
+  const getJours = (ddm: string | null): number | null => {
+    if (!ddm) return null
+    return Math.ceil((new Date(ddm).getTime() - Date.now()) / 86400000)
+  }
+
+  const getExpireLabel = (ddm: string | null): string => {
+    const j = getJours(ddm)
+    if (j === null) return 'Expire dans 48h'
+    if (j < 0) return 'Expire'
+    if (j < 15) return `Expire dans ${Math.min(j * 24, 6)}h`
+    if (j < 30) return 'Expire dans 24h'
+    return 'Expire dans 48h'
+  }
+
+  const estActive = (l: LigneOffre): boolean =>
+    l.prixOffre !== null && l.prixOffre > 0 &&
+    l.quantite !== null && l.quantite > 0
+
+  const estValide = (l: LigneOffre): boolean =>
+    estActive(l) &&
+    l.prixOffre! >= l.produit.prix_wag_ht &&
+    l.quantite! >= getQmc(l.produit)
+
+  const getEtatGroupe = useCallback((groupeKey: string): 'tous' | 'aucun' | 'partiel' => {
+    const lignesGroupe = lignesOffre.filter(
+      l => getGroupeKey(l.produit) === groupeKey
+    )
+    const nbActifs = lignesGroupe.filter(estActive).length
+    if (nbActifs === 0) return 'aucun'
+    if (nbActifs === lignesGroupe.length) return 'tous'
+    return 'partiel'
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lignesOffre])
+
+  // ─── Filtres et tri ─────────────────────────────────────────
+
   const categories = useMemo(() => {
     const cats = new Set(lignesOffre.map(l => l.produit.categorie).filter((c): c is string => c !== null))
     return ['toutes', ...Array.from(cats)]
@@ -149,27 +177,29 @@ export default function OffresPage() {
       acc[key].push(l)
       return acc
     }, {} as Record<string, LigneOffre[]>)
-    // Trier les groupes eux-memes
     const sorted = Object.entries(g).sort(([, a], [, b]) => sortLignes(a[0], b[0]))
     return Object.fromEntries(sorted)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lignesOffre, filtreCat, filtreDdm, tri])
 
-  // Toggle
-  const toggleCoche = (produitId: string) => {
-    setLignesOffre(prev => prev.map(l =>
-      l.produit.id === produitId
-        ? { ...l, coche: !l.coche, prixOffre: null, quantite: null }
-        : l
-    ))
-  }
+  // ─── Handlers ───────────────────────────────────────────────
 
-  const toggleGroupe = (groupeKey: string, coche: boolean) => {
-    setLignesOffre(prev => prev.map(l =>
-      getGroupeKey(l.produit) === groupeKey
-        ? { ...l, coche, prixOffre: coche ? l.prixOffre : null, quantite: coche ? l.quantite : null }
-        : l
-    ))
+  const handleToggleGroupe = (groupeKey: string) => {
+    const etat = getEtatGroupe(groupeKey)
+    if (etat === 'tous') {
+      setLignesOffre(prev => prev.map(l =>
+        getGroupeKey(l.produit) === groupeKey
+          ? { ...l, prixOffre: null, quantite: null }
+          : l
+      ))
+    } else {
+      setLignesOffre(prev => prev.map(l =>
+        getGroupeKey(l.produit) === groupeKey &&
+        (l.prixOffre === null || l.prixOffre === 0)
+          ? { ...l, prixOffre: l.produit.prix_wag_ht, quantite: getQmc(l.produit) }
+          : l
+      ))
+    }
   }
 
   const updatePrix = (produitId: string, prix: number | null) => {
@@ -184,31 +214,28 @@ export default function OffresPage() {
     ))
   }
 
-  // Validation
-  const lignesCochees = lignesOffre.filter(l => l.coche)
+  // ─── Variables calculees ────────────────────────────────────
 
-  const lignesInvalides = lignesCochees.filter(l =>
-    !l.prixOffre ||
-    l.prixOffre < l.produit.prix_wag_ht ||
-    !l.quantite ||
-    l.quantite < getQmc(l.produit)
+  const lignesActives = lignesOffre.filter(estActive)
+  const lignesInvalides = lignesActives.filter(l => !estValide(l))
+  const totalHT = lignesActives.reduce(
+    (acc, l) => acc + (l.prixOffre! * l.quantite!), 0
   )
-
-  const totalHT = lignesCochees.reduce((acc, l) =>
-    acc + ((l.prixOffre ?? 0) * (l.quantite ?? 0)), 0
-  )
-
   const peutEnvoyer =
-    lignesCochees.length > 0 &&
+    lignesActives.length > 0 &&
     lignesInvalides.length === 0 &&
-    enseigne.trim().length > 0 &&
-    email.includes('@')
+    prenomNom.trim().length > 0 &&
+    nomEnseigne.trim().length > 0 &&
+    email.includes('@') && email.includes('.')
 
-  // Soumission
+  const nbFiltre = Object.values(groupes).reduce((s, g) => s + g.length, 0)
+
+  // ─── Soumission ─────────────────────────────────────────────
+
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      for (const ligne of lignesCochees) {
+      for (const ligne of lignesActives) {
         const jours = getJours(ligne.produit.ddm) ?? 999
         const expiresAt = jours < 15
           ? new Date(Date.now() + 6 * 3600000).toISOString()
@@ -222,7 +249,7 @@ export default function OffresPage() {
           fournisseur_id: null,
           marque: ligne.produit.marque,
           nom_produit: ligne.produit.nom,
-          acheteur_enseigne: enseigne,
+          acheteur_enseigne: `${prenomNom} \u2014 ${nomEnseigne}`,
           acheteur_email: email,
           prix_offre_ht: ligne.prixOffre,
           quantite: ligne.quantite,
@@ -232,10 +259,11 @@ export default function OffresPage() {
         if (error) throw new Error(error.message)
       }
 
-      localStorage.setItem('wag_enseigne', enseigne)
+      localStorage.setItem('wag_prenom_nom', prenomNom)
+      localStorage.setItem('wag_nom_enseigne', nomEnseigne)
       localStorage.setItem('wag_email', email)
 
-      setLignesOffre(prev => prev.map(l => ({ ...l, coche: false, prixOffre: null, quantite: null })))
+      setLignesOffre(prev => prev.map(l => ({ ...l, prixOffre: null, quantite: null })))
       setConfirmation(true)
       setTimeout(() => setConfirmation(false), 5000)
     } catch (e) {
@@ -245,9 +273,9 @@ export default function OffresPage() {
     }
   }
 
-  const nbFiltre = Object.values(groupes).reduce((s, g) => s + g.length, 0)
-
   // ─── Render ─────────────────────────────────────────────────
+
+  const GRID = 'grid-cols-[2fr_65px_55px_80px_90px_95px_70px_85px]'
 
   return (
     <div className="min-h-screen bg-gray-50 pb-40">
@@ -299,101 +327,88 @@ export default function OffresPage() {
           </div>
         )}
 
-        {/* Header colonnes */}
+        {/* Tableau scrollable */}
         {!loadingData && nbFiltre > 0 && (
-          <div className="hidden lg:grid grid-cols-[40px_1fr_60px_70px_90px_120px_120px_90px] gap-2 px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase">
-            <span />
-            <span>Produit</span>
-            <span>DDM</span>
-            <span>Stock</span>
-            <span className="text-right">Plancher HT</span>
-            <span>Meilleure offre</span>
-            <span>Votre prix HT</span>
-            <span>Qte (ctn)</span>
-          </div>
-        )}
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            {/* Header colonnes */}
+            <div className={`hidden lg:grid ${GRID} gap-2 px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase min-w-[800px]`}>
+              <span>Produit</span>
+              <span>DDM</span>
+              <span>Stock</span>
+              <span className="text-right">Plancher HT</span>
+              <span>Meilleure offre</span>
+              <span>Votre prix HT</span>
+              <span>Qte</span>
+              <span className="text-right">Sous-total</span>
+            </div>
 
-        {/* Groupes */}
-        {!loadingData && Object.entries(groupes).map(([key, lignes]) => {
-          const tousCoches = lignes.every(l => l.coche)
-          return (
-            <div key={key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              {/* Header groupe */}
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={tousCoches}
-                  onChange={() => toggleGroupe(key, !tousCoches)}
-                  className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <div>
-                  <span className="text-sm font-bold text-gray-900">{key}</span>
-                  <span className="text-xs text-gray-500 ml-2">{lignes.length} ref.</span>
-                </div>
-              </div>
+            {/* Groupes */}
+            {Object.entries(groupes).map(([key, lignes]) => {
+              const etat = getEtatGroupe(key)
+              return (
+                <div key={key} className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-3 min-w-[800px]">
+                  {/* Header groupe */}
+                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={etat === 'tous'}
+                      ref={el => { if (el) el.indeterminate = etat === 'partiel' }}
+                      onChange={() => handleToggleGroupe(key)}
+                      className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    />
+                    <div>
+                      <span className="text-sm font-bold text-gray-900">{key}</span>
+                      <span className="text-xs text-gray-500 ml-2">{lignes.length} ref.</span>
+                    </div>
+                  </div>
 
-              {/* Lignes */}
-              <div className="divide-y divide-gray-50">
-                {lignes.map(ligne => {
-                  const p = ligne.produit
-                  const jours = getJours(p.ddm)
-                  const badge = getDdmBadge(jours)
-                  const qmc = getQmc(p)
-                  const prixInvalide = ligne.prixOffre !== null && ligne.prixOffre < p.prix_wag_ht
-                  const qteInvalide = ligne.quantite !== null && ligne.quantite < qmc
+                  {/* Lignes */}
+                  <div className="divide-y divide-gray-50">
+                    {lignes.map(ligne => {
+                      const p = ligne.produit
+                      const jours = getJours(p.ddm)
+                      const badge = getDdmBadge(jours)
+                      const qmc = getQmc(p)
+                      const prixInvalide = ligne.prixOffre !== null && ligne.prixOffre > 0 && ligne.prixOffre < p.prix_wag_ht
+                      const qteInvalide = ligne.quantite !== null && ligne.quantite > 0 && ligne.quantite < qmc
+                      const active = estActive(ligne)
+                      const sousTotal = active ? (ligne.prixOffre! * ligne.quantite!) : null
 
-                  return (
-                    <div
-                      key={p.id}
-                      className={`px-4 py-3 transition-colors ${ligne.coche ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}
-                    >
-                      {/* Mobile + Desktop layout */}
-                      <div className="lg:grid lg:grid-cols-[40px_1fr_60px_70px_90px_120px_120px_90px] lg:gap-2 lg:items-center">
-                        {/* Checkbox */}
-                        <div className="flex items-center lg:block">
-                          <input
-                            type="checkbox"
-                            checked={ligne.coche}
-                            onChange={() => toggleCoche(p.id)}
-                            className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                          />
-                        </div>
+                      return (
+                        <div key={p.id} className={`px-4 py-3 transition-colors ${active ? 'bg-green-50/50' : 'hover:bg-gray-50'}`}>
+                          {/* Desktop */}
+                          <div className={`hidden lg:grid ${GRID} gap-2 items-center`}>
+                            {/* Produit */}
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{p.nom}</p>
+                              <p className="text-[11px] text-gray-500">
+                                {p.stock_disponible ?? 0} cartons dispo &middot; PCB {qmc} &middot; {getExpireLabel(p.ddm)}
+                              </p>
+                            </div>
 
-                        {/* Produit */}
-                        <div className="mt-1 lg:mt-0">
-                          <p className="text-sm font-medium text-gray-900">{p.nom}</p>
-                          <p className="text-[11px] text-gray-500">
-                            {p.stock_disponible ?? 0} ctn dispo &middot; min {qmc} &middot; {getExpireLabel(p.ddm)}
-                          </p>
-                        </div>
+                            {/* DDM */}
+                            <div>
+                              <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>
+                                {badge.label}
+                              </span>
+                            </div>
 
-                        {/* DDM */}
-                        <div className="hidden lg:block">
-                          {badge && (
-                            <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          )}
-                        </div>
+                            {/* Stock */}
+                            <div className="text-xs text-gray-600">
+                              {p.stock_disponible ?? '\u2014'}
+                            </div>
 
-                        {/* Stock */}
-                        <div className="hidden lg:block text-xs text-gray-600">
-                          {p.stock_disponible ?? '—'} ctn
-                        </div>
+                            {/* Prix plancher */}
+                            <div className="text-right text-sm font-medium text-gray-900">
+                              {p.prix_wag_ht.toFixed(2)} &euro;
+                            </div>
 
-                        {/* Prix plancher */}
-                        <div className="hidden lg:block text-right text-sm font-medium text-gray-900">
-                          {p.prix_wag_ht.toFixed(2)} &euro;
-                        </div>
+                            {/* Meilleure offre */}
+                            <div>
+                              <MeilleureOffre produitId={p.id} />
+                            </div>
 
-                        {/* Meilleure offre */}
-                        <div className="hidden lg:block">
-                          <MeilleureOffre produitId={p.id} />
-                        </div>
-
-                        {/* Inputs */}
-                        {ligne.coche ? (
-                          <>
+                            {/* Prix HT */}
                             <div>
                               <input
                                 type="number"
@@ -405,21 +420,22 @@ export default function OffresPage() {
                                 className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
                                   prixInvalide
                                     ? 'border-red-300 bg-red-50 focus:border-red-500'
-                                    : 'border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100'
+                                    : ligne.prixOffre && !prixInvalide
+                                      ? 'border-green-300 focus:border-green-500 focus:ring-2 focus:ring-green-100'
+                                      : 'border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-100'
                                 }`}
                               />
                               {prixInvalide && (
-                                <p className="text-[10px] text-red-500 mt-0.5">Sous le plancher</p>
-                              )}
-                              {ligne.prixOffre && !prixInvalide && (
-                                <p className="text-[10px] text-green-600 mt-0.5">Dans la course</p>
+                                <p className="text-[10px] text-red-500 mt-0.5">Min. {p.prix_wag_ht.toFixed(2)} &euro; HT</p>
                               )}
                             </div>
+
+                            {/* Quantite */}
                             <div>
                               <input
                                 type="number"
                                 min={qmc}
-                                placeholder={`min ${qmc}`}
+                                placeholder={`${qmc}`}
                                 value={ligne.quantite ?? ''}
                                 onChange={e => updateQuantite(p.id, parseInt(e.target.value) || null)}
                                 className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
@@ -429,64 +445,73 @@ export default function OffresPage() {
                                 }`}
                               />
                               {qteInvalide && (
-                                <p className="text-[10px] text-red-500 mt-0.5">Min. {qmc} ctn</p>
+                                <p className="text-[10px] text-red-500 mt-0.5">Min. {qmc} cartons</p>
                               )}
                             </div>
-                          </>
-                        ) : (
-                          <>
-                            <p className="hidden lg:block text-xs text-gray-400 italic">cocher pour offrir</p>
-                            <span className="hidden lg:block" />
-                          </>
-                        )}
-                      </div>
 
-                      {/* Mobile: infos supplementaires quand coche */}
-                      {ligne.coche && (
-                        <div className="lg:hidden mt-3 space-y-2">
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                            {badge && <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>}
-                            <span>Plancher: {p.prix_wag_ht.toFixed(2)} &euro;</span>
-                            <MeilleureOffre produitId={p.id} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] text-gray-500">Prix HT</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min={p.prix_wag_ht}
-                                placeholder={`${p.prix_wag_ht.toFixed(2)}`}
-                                value={ligne.prixOffre ?? ''}
-                                onChange={e => updatePrix(p.id, parseFloat(e.target.value) || null)}
-                                className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
-                                  prixInvalide ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-green-500'
-                                }`}
-                              />
+                            {/* Sous-total */}
+                            <div className="text-right text-sm font-medium text-gray-900">
+                              {sousTotal !== null ? `${sousTotal.toFixed(2)} \u20ac` : '\u2014'}
                             </div>
-                            <div>
-                              <label className="text-[10px] text-gray-500">Qte (ctn)</label>
-                              <input
-                                type="number"
-                                min={qmc}
-                                placeholder={`min ${qmc}`}
-                                value={ligne.quantite ?? ''}
-                                onChange={e => updateQuantite(p.id, parseInt(e.target.value) || null)}
-                                className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
-                                  qteInvalide ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-green-500'
-                                }`}
-                              />
+                          </div>
+
+                          {/* Mobile */}
+                          <div className="lg:hidden space-y-2">
+                            <p className="text-sm font-medium text-gray-900">{p.nom}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                              <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+                              <span>{p.stock_disponible ?? 0} cartons</span>
+                              <span>PCB {qmc}</span>
+                              <span>Plancher {p.prix_wag_ht.toFixed(2)} &euro;</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <MeilleureOffre produitId={p.id} />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[10px] text-gray-500">Prix HT</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min={p.prix_wag_ht}
+                                  placeholder={`${p.prix_wag_ht.toFixed(2)}`}
+                                  value={ligne.prixOffre ?? ''}
+                                  onChange={e => updatePrix(p.id, parseFloat(e.target.value) || null)}
+                                  className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
+                                    prixInvalide ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-green-500'
+                                  }`}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-gray-500">Qte</label>
+                                <input
+                                  type="number"
+                                  min={qmc}
+                                  placeholder={`${qmc}`}
+                                  value={ligne.quantite ?? ''}
+                                  onChange={e => updateQuantite(p.id, parseInt(e.target.value) || null)}
+                                  className={`w-full px-2 py-1.5 text-sm border rounded-lg outline-none ${
+                                    qteInvalide ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-green-500'
+                                  }`}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-gray-500">Sous-total</label>
+                                <p className="text-sm font-medium text-gray-900 py-1.5">
+                                  {sousTotal !== null ? `${sousTotal.toFixed(2)} \u20ac` : '\u2014'}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Vide */}
         {!loadingData && nbFiltre === 0 && (
@@ -496,31 +521,37 @@ export default function OffresPage() {
         )}
       </div>
 
-      {/* Barre soumission sticky */}
+      {/* Barre soumission sticky — EN DEHORS du div overflowX */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40">
         {confirmation && (
           <div className="bg-green-50 border-b border-green-200 px-4 py-3 text-sm text-green-700 text-center font-medium">
-            Vos offres ont bien ete envoyees. WAG vous contacte sous 24h.
+            Offres envoyees &mdash; WAG vous contacte sous 24h
           </div>
         )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
           <input
-            value={enseigne}
-            onChange={e => setEnseigne(e.target.value)}
-            placeholder="Votre enseigne"
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white w-40 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
+            value={prenomNom}
+            onChange={e => setPrenomNom(e.target.value)}
+            placeholder="Prenom Nom"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white w-36 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
+          />
+          <input
+            value={nomEnseigne}
+            onChange={e => setNomEnseigne(e.target.value)}
+            placeholder="Enseigne"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white w-36 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
           />
           <input
             value={email}
             onChange={e => setEmail(e.target.value)}
-            placeholder="Email de contact"
+            placeholder="Email"
             type="email"
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white w-52 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white w-48 focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
           />
           <div className="flex-1 text-sm text-gray-600 text-right">
-            <span className="font-semibold">{lignesCochees.length}</span> offre{lignesCochees.length > 1 ? 's' : ''} &middot; Total: <span className="font-semibold">{formatEur(totalHT)} HT</span>
+            <span className="font-semibold">{lignesActives.length}</span> offre{lignesActives.length > 1 ? 's' : ''} &middot; Total: <span className="font-semibold">{totalHT.toFixed(2)} &euro; HT depart entrepot</span>
             {lignesInvalides.length > 0 && (
-              <span className="ml-2 text-xs text-red-500">({lignesInvalides.length} a corriger)</span>
+              <span className="ml-2 text-xs text-red-500 font-medium">({lignesInvalides.length} a corriger)</span>
             )}
           </div>
           <button
@@ -529,10 +560,12 @@ export default function OffresPage() {
             className="bg-green-700 hover:bg-green-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
           >
             {loading
-              ? 'Envoi...'
-              : lignesInvalides.length > 0
-                ? 'Corriger avant d\'envoyer'
-                : `Envoyer mes ${lignesCochees.length} offres \u2192`}
+              ? 'Envoi en cours...'
+              : lignesActives.length === 0
+                ? 'Saisissez un prix pour commencer'
+                : lignesInvalides.length > 0
+                  ? `Corriger ${lignesInvalides.length} offre${lignesInvalides.length > 1 ? 's' : ''}`
+                  : `Envoyer mes ${lignesActives.length} offres \u2192`}
           </button>
         </div>
       </div>
