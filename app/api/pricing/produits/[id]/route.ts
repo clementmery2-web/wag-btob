@@ -13,7 +13,7 @@ export async function PATCH(
   const body = await req.json();
 
   // Tenter la mise à jour sur produits d'abord
-  const allowedProduitFields = ['statut', 'prix_wag_ht', 'pmc', 'tva_taux'];
+  const allowedProduitFields = ['statut', 'prix_wag_ht', 'pmc', 'tva_taux', 'visible_catalogue', 'prix_vente_wag_ht', 'pmc_reference'];
   const produitUpdates: Record<string, unknown> = {};
   for (const field of allowedProduitFields) {
     if (field in body) produitUpdates[field] = body[field];
