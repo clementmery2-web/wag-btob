@@ -455,11 +455,6 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                   </>
                                 )}
                                 {r.scenario === 'D' && <div style={{ fontSize: '12px', color: '#9CA3AF' }}>PA &gt; PMC · gap &gt;50%</div>}
-                                {r.scenario === 'PMC_REQUIS' && (
-                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: '#fef3c7', color: '#d97706', fontSize: '12px', fontWeight: 600 }}>
-                                    PMC requis
-                                  </span>
-                                )}
                               </td>
                             </tr>
                           )

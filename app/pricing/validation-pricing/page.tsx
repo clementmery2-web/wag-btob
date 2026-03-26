@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { AuthGuard } from '../components/auth-guard'
 import PricingClient from '../PricingClient'
 import type { Produit } from '../types'
 
@@ -23,5 +24,9 @@ export default async function ValidationPricingPage() {
     .eq('statut', 'en_attente')
     .order('created_at', { ascending: false })
 
-  return <PricingClient initialProduits={(produits ?? []) as Produit[]} />
+  return (
+    <AuthGuard>
+      <PricingClient initialProduits={(produits ?? []) as Produit[]} />
+    </AuthGuard>
+  )
 }
