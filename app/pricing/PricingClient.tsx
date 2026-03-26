@@ -130,6 +130,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   const [modalTab, setModalTab] = useState<0 | 1 | 2>(0)
   const [flashRow, setFlashRow] = useState<string | null>(null)
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+  const [showPmcImport, setShowPmcImport] = useState(false)
 
   const inputPmcRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -287,6 +288,58 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
           <div className="text-center py-20 text-sm text-gray-400">Aucun produit en attente de validation</div>
         )}
 
+        {(() => {
+          const bloqués = produits.filter(p =>
+            calculerScenarioResult(p, pmcEdits).scenario === 'PMC_REQUIS'
+          )
+          const nb = bloqués.length
+          if (nb === 0) return null
+          const urgents = mounted
+            ? bloqués.filter(p => {
+                const j = calculerJoursDDM(p.dluo)
+                return j !== null && j < 30
+              }).length
+            : 0
+          return (
+            <div style={{ background: '#fef3c7', border: '0.5px solid #fcd34d', borderRadius: '8px', padding: '10px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 500, color: '#92400e' }}>
+                  {nb} produit{nb > 1 ? 's' : ''} bloqué{nb > 1 ? 's' : ''} — PMC manquant
+                </span>
+                {urgents > 0 && (
+                  <span style={{ fontSize: '12px', color: '#dc2626', marginLeft: '8px', fontWeight: 500 }}>
+                    dont {urgents} expirent dans moins de 30j
+                  </span>
+                )}
+                <span style={{ fontSize: '12px', color: '#b45309', marginLeft: '8px' }}>
+                  Importez un fichier EAN/PMC pour les débloquer en masse
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    const firstEmpty = Object.values(inputPmcRefs.current).find(el => el && !el.value)
+                    if (firstEmpty) { firstEmpty.focus(); firstEmpty.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+                    setShowPmcImport(true)
+                  }}
+                  style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px', background: '#d97706', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Importer PMC →
+                </button>
+                <button
+                  onClick={() => {
+                    const firstEmpty = Object.values(inputPmcRefs.current).find(el => el && !el.value)
+                    if (firstEmpty) { firstEmpty.focus(); firstEmpty.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+                  }}
+                  style={{ fontSize: '12px', color: '#b45309', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  ou saisir manuellement
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {groupes.map(groupe => {
           const isCollapsed = collapsed[groupe.nom] ?? false
           const resultsGroupe = groupe.produits.map(p => ({ produit: p, r: calculerScenarioResult(p, pmcEdits) }))
@@ -365,13 +418,14 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                         </tr>
                       </thead>
                       <tbody>
-                        {resultsGroupe.map(({ produit, r }) => {
+                        {resultsGroupe.map(({ produit, r }, index) => {
                           const badge = SCENARIO_BADGE[r.scenario]
-                          const couleur = r.scenario === 'A' ? '#16a34a' : r.scenario === 'B' ? '#2563eb' : (r.scenario === 'C' || r.scenario === 'PMC_REQUIS') ? '#d97706' : '#dc2626'
+                          const couleurLigne = r.scenario === 'A' ? '#16a34a' : r.scenario === 'B' ? '#2563eb' : (r.scenario === 'C' || r.scenario === 'PMC_REQUIS') ? '#d97706' : '#dc2626'
                           const isCD = r.scenario === 'C' || r.scenario === 'D'
+                          const fondLigne = flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#fef2f2' : index % 2 === 0 ? 'white' : '#F9FAFB'
 
                           return (
-                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleur}`, background: flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#FFF5F5' : 'white', transition: 'background 0.3s' }}>
+                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleurLigne}`, background: fondLigne, opacity: r.scenario === 'D' ? 0.82 : 1, transition: 'background 0.3s' }}>
                               {/* PRODUIT EAN */}
                               <td style={{ padding: '10px 12px' }}>
                                 <div style={{ fontWeight: 600, fontSize: '14px' }}>{produit.nom}</div>
@@ -411,7 +465,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                               {/* PA/PMC */}
                               <td style={{ padding: '10px 8px' }}>
                                 {r.ratio != null
-                                  ? <span title={`Ratio : ${r.ratio.toFixed(2)}%${r.gap != null ? ` · Gap : ${r.gap.toFixed(2)}%` : ''}`} style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, background: badge.bg, color: badge.text }}>{r.ratio.toFixed(0)}%</span>
+                                  ? <span title={`Ratio : ${r.ratio.toFixed(2)}%${r.gap != null ? ` · Gap : ${r.gap.toFixed(2)}%` : ''}`} style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, background: r.scenario === 'D' ? '#fca5a5' : badge.bg, color: r.scenario === 'D' ? '#7f1d1d' : badge.text }}>{r.ratio.toFixed(0)}%</span>
                                   : <span style={{ color: '#9CA3AF', fontSize: '12px' }}>—</span>}
                               </td>
                               {/* DDM */}
@@ -420,8 +474,13 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                 {mounted && produit.dluo && (() => {
                                   const j = calculerJoursDDM(produit.dluo)
                                   if (j === null) return null
-                                  const c = j < 30 ? '#dc2626' : j < 60 ? '#d97706' : '#16a34a'
-                                  return <div style={{ fontSize: '11px', color: c, marginTop: '2px' }}>{j}j</div>
+                                  if (j < 30) return (
+                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
+                                  )
+                                  if (j < 60) return (
+                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
+                                  )
+                                  return <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '2px' }}>{j}j</div>
                                 })()}
                               </td>
                               {/* PV HT */}
@@ -434,7 +493,9 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                               </td>
                               {/* SCÉNARIO */}
                               <td style={{ padding: '10px 8px' }}>
-                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: badge.bg, color: badge.text, fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{badge.label}</span>
+                                {r.scenario !== 'D' && (
+                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: badge.bg, color: badge.text, fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{badge.label}</span>
+                                )}
                                 {(r.scenario === 'A' || r.scenario === 'B') && (
                                   <>
                                     <div style={{ fontSize: '12px', color: '#374151' }}>PA × {r.multiplicateur!.toFixed(2)} → {r.pv!.toFixed(2)} € +{r.marge!.toFixed(1)}%</div>
@@ -454,7 +515,12 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                     </button>
                                   </>
                                 )}
-                                {r.scenario === 'D' && <div style={{ fontSize: '12px', color: '#9CA3AF' }}>PA &gt; PMC · gap &gt;50%</div>}
+                                {r.scenario === 'D' && (
+                                  <>
+                                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: '#fca5a5', color: '#7f1d1d', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>D — REFUS</span>
+                                    <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 500 }}>PA &gt; PMC · gap &gt;50%</div>
+                                  </>
+                                )}
                               </td>
                             </tr>
                           )
