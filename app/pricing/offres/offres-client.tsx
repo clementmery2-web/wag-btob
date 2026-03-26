@@ -1,7 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { formatEur } from '../lib/types';
+
+const OPERATEURS = ['Chloé', 'Juliette', 'Solène', 'Clément', 'Jonathan', 'Marc', 'Eva', 'Test'];
 
 interface OffreData {
   id: string;
@@ -44,6 +46,32 @@ export function OffresClient() {
   const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [noteModal, setNoteModal] = useState<string | null>(null);
+  const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Outside click to close dropdown
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      setAssignDropdown(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (assignDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [assignDropdown, handleClickOutside]);
+
+  function handleAssign(offreId: string, nom: string) {
+    setOffres(prev => prev.map(o => o.id === offreId ? { ...o, assigne_a: nom } : o));
+    setAssignDropdown(null);
+    fetch(`/api/pricing/produits/${offreId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigne_a: nom }),
+    }).catch(err => console.error('[assigner] PATCH failed:', err));
+  }
 
   useEffect(() => {
     fetch('/api/pricing/offres')
@@ -169,11 +197,31 @@ export function OffresClient() {
                         {STATUT_LABELS[offre.statut]?.label ?? offre.statut}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {offre.assigne_a ?? (
-                        <button className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
-                          Assigner
-                        </button>
+                    <td className="px-4 py-3 text-center relative">
+                      <button
+                        onClick={() => setAssignDropdown(assignDropdown === offre.id ? null : offre.id)}
+                        className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+                          offre.assigne_a
+                            ? 'text-gray-700 hover:bg-gray-100'
+                            : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {offre.assigne_a ?? 'Assigner'}
+                      </button>
+                      {assignDropdown === offre.id && (
+                        <div ref={dropdownRef} className="absolute right-0 top-full z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-40">
+                          {OPERATEURS.map(nom => (
+                            <button
+                              key={nom}
+                              onClick={() => handleAssign(offre.id, nom)}
+                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 transition-colors ${
+                                offre.assigne_a === nom ? 'font-bold text-indigo-600 bg-indigo-50' : 'text-gray-700'
+                              }`}
+                            >
+                              {nom}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">

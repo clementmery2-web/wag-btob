@@ -38,6 +38,7 @@ export async function PATCH(
   const offreUpdates: Record<string, unknown> = {};
   if ('statut' in body) offreUpdates.statut = body.statut === 'valide' ? 'traitee' : body.statut;
   if ('note_operateur' in body) offreUpdates.note_operateur = body.note_operateur;
+  if ('assigne_a' in body) offreUpdates.assigne_a = body.assigne_a;
 
   if (Object.keys(offreUpdates).length > 0) {
     offreUpdates.updated_at = new Date().toISOString();
