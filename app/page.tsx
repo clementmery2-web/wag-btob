@@ -69,7 +69,9 @@ export default function OffresPage() {
     fetch('/api/catalogue')
       .then(r => r.json())
       .then(data => {
-        setLignesOffre((data.produits ?? data).map((p: Produit) => ({
+        const raw = data.produits ?? data
+        console.log('[catalogue] source:', data.source, 'produits fetched:', raw.length, 'first:', raw[0] ? JSON.stringify(raw[0]).slice(0, 200) : 'none')
+        setLignesOffre(raw.map((p: Produit) => ({
           produit: {
             id: p.id,
             nom: p.nom,
