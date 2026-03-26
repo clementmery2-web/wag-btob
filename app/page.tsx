@@ -16,6 +16,7 @@ interface Produit {
   prix_wag_ht: number
   ddm: string | null
   pcb: number | null
+  qmc: number | null
   stock_disponible: number | null
   remise_pct: number | null
   flux: string | null
@@ -37,8 +38,8 @@ const getJours = (ddm: string | null): number | null => {
 }
 
 const getDdmBadge = (jours: number | null) => {
-  if (jours === null) return null
-  if (jours < 0) return { label: 'Expire', cls: 'bg-red-100 text-red-700' }
+  if (jours === null) return { label: '\u2014', cls: 'bg-gray-100 text-gray-500' }
+  if (jours <= 0) return { label: '\u2014', cls: 'bg-gray-100 text-gray-500' }
   if (jours < 10) return { label: `${jours}j`, cls: 'bg-red-100 text-red-700' }
   if (jours < 30) return { label: `${jours}j`, cls: 'bg-amber-100 text-amber-700' }
   return { label: `${jours}j`, cls: 'bg-green-100 text-green-700' }
@@ -46,13 +47,13 @@ const getDdmBadge = (jours: number | null) => {
 
 const getExpireLabel = (ddm: string | null): string => {
   const j = getJours(ddm)
-  if (j === null) return 'Expire dans 48h'
+  if (j === null || j <= 0) return 'Expire dans 48h'
   if (j < 15) return 'Expire dans 6h'
   if (j < 30) return 'Expire dans 24h'
   return 'Expire dans 48h'
 }
 
-const getQmc = (p: Produit): number => p.pcb ?? 1
+const getQmc = (p: Produit): number => p.qmc ?? p.pcb ?? 1
 
 const getGroupeKey = (p: Produit) => p.fournisseur_nom || p.marque || 'Autres'
 
@@ -70,6 +71,7 @@ export default function OffresPage() {
   const [confirmation, setConfirmation] = useState(false)
   const [filtreCat, setFiltreCat] = useState('toutes')
   const [filtreDdm, setFiltreDdm] = useState('toutes')
+  const [tri, setTri] = useState('ddm')
 
   // Charger coordonnees memorisees
   useEffect(() => {
@@ -92,6 +94,7 @@ export default function OffresPage() {
           prix_wag_ht: p.prix_wag_ht ?? 0,
           ddm: p.ddm ?? null,
           pcb: p.pcb ?? null,
+          qmc: (p as Produit & { qmc?: number }).qmc ?? p.pcb ?? null,
           stock_disponible: p.stock_disponible ?? null,
           remise_pct: p.remise_pct ?? null,
           flux: p.flux ?? null,
@@ -124,17 +127,33 @@ export default function OffresPage() {
     return true
   }
 
+  const sortLignes = (a: LigneOffre, b: LigneOffre): number => {
+    if (tri === 'ddm') {
+      const ja = getJours(a.produit.ddm) ?? 9999
+      const jb = getJours(b.produit.ddm) ?? 9999
+      return ja - jb
+    }
+    if (tri === 'remise') return (b.produit.remise_pct ?? 0) - (a.produit.remise_pct ?? 0)
+    if (tri === 'marque') return (a.produit.marque ?? '').localeCompare(b.produit.marque ?? '')
+    if (tri === 'stock') return (b.produit.stock_disponible ?? 0) - (a.produit.stock_disponible ?? 0)
+    return 0
+  }
+
   const groupes = useMemo(() => {
-    return lignesOffre
+    const filtered = lignesOffre
       .filter(l => appliquerFiltres(l.produit))
-      .reduce((acc, l) => {
-        const key = getGroupeKey(l.produit)
-        if (!acc[key]) acc[key] = []
-        acc[key].push(l)
-        return acc
-      }, {} as Record<string, LigneOffre[]>)
+      .sort(sortLignes)
+    const g = filtered.reduce((acc, l) => {
+      const key = getGroupeKey(l.produit)
+      if (!acc[key]) acc[key] = []
+      acc[key].push(l)
+      return acc
+    }, {} as Record<string, LigneOffre[]>)
+    // Trier les groupes eux-memes
+    const sorted = Object.entries(g).sort(([, a], [, b]) => sortLignes(a[0], b[0]))
+    return Object.fromEntries(sorted)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lignesOffre, filtreCat, filtreDdm])
+  }, [lignesOffre, filtreCat, filtreDdm, tri])
 
   // Toggle
   const toggleCoche = (produitId: string) => {
@@ -263,6 +282,12 @@ export default function OffresPage() {
             <option value="urgent">DDM urgente (&lt;15j)</option>
             <option value="moyen">DDM moyenne (15-30j)</option>
             <option value="long">DDM longue (&gt;30j)</option>
+          </select>
+          <select value={tri} onChange={e => setTri(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700">
+            <option value="ddm">DDM urgente d&apos;abord</option>
+            <option value="remise">Meilleure remise d&apos;abord</option>
+            <option value="marque">Par marque A&rarr;Z</option>
+            <option value="stock">Stock decroissant</option>
           </select>
         </div>
 

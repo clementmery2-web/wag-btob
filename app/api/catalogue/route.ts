@@ -145,8 +145,9 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('produits')
       .select('*')
-      .eq('statut', 'valide')
-      .order('created_at', { ascending: false });
+      .or('statut.eq.valide,visible_catalogue.eq.true')
+      .order('created_at', { ascending: false })
+      .limit(500);
 
     if (categorie && categorie !== 'Tout') {
       query = query.eq('categorie', categorie);
