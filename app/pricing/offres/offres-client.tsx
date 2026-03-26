@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { formatEur } from '../lib/types';
 
@@ -44,10 +45,23 @@ export function OffresClient() {
   const [error, setError] = useState<string | null>(null);
   const [filtrStatut, setFiltrStatut] = useState<string>('tous');
   const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [noteModal, setNoteModal] = useState<string | null>(null);
   const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Tooltip state: fixed position + offre data
+  const [hoveredOffre, setHoveredOffre] = useState<OffreData | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  function handleMouseEnter(e: React.MouseEvent, offre: OffreData) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltipPos({ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 280) });
+    setHoveredOffre(offre);
+  }
+
+  function handleMouseLeave() {
+    setHoveredOffre(null);
+  }
 
   // Outside click to close dropdown
   const handleClickOutside = useCallback((e: MouseEvent) => {
@@ -158,8 +172,8 @@ export function OffresClient() {
 
       {/* Tableau */}
       {!loading && (
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="overflow-x-auto overflow-y-visible">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -178,9 +192,9 @@ export function OffresClient() {
                 {filtered.map(offre => (
                   <tr
                     key={offre.id}
-                    className="hover:bg-gray-50 transition-colors relative"
-                    onMouseEnter={() => setHoveredId(offre.id)}
-                    onMouseLeave={() => setHoveredId(null)}
+                    className="hover:bg-gray-50 transition-colors"
+                    onMouseEnter={(e) => handleMouseEnter(e, offre)}
+                    onMouseLeave={handleMouseLeave}
                   >
                     <td className="px-4 py-3">
                       <span title={PRIORITE_LABELS[offre.priorite]}>{PRIORITE_ICONS[offre.priorite]}</span>
@@ -243,20 +257,6 @@ export function OffresClient() {
                         </button>
                       </div>
                     </td>
-
-                    {/* Preview tooltip */}
-                    {hoveredId === offre.id && (
-                      <td className="relative p-0 border-0" style={{ width: 0, overflow: 'visible' }}>
-                        <div className="absolute right-4 top-0 z-50 mt-1 pointer-events-none">
-                          <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
-                            <p className="font-semibold text-gray-900 mb-1">{offre.fournisseur}</p>
-                            <p className="text-gray-600">DDM min : {new Date(offre.ddm_min).toLocaleDateString('fr-FR')}</p>
-                            <p className="text-gray-600">Valeur estimée : {formatEur(offre.valeur_estimee)}</p>
-                            <p className="text-gray-600">Score urgence : {offre.score_urgence}/100</p>
-                          </div>
-                        </div>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
@@ -266,6 +266,27 @@ export function OffresClient() {
             <div className="text-center py-8 text-sm text-gray-400">Aucune offre trouvée</div>
           )}
         </div>
+      )}
+
+      {/* Tooltip portal — fixed position, never clipped */}
+      {hoveredOffre && typeof document !== 'undefined' && createPortal(
+        <div
+          className="pointer-events-none"
+          style={{
+            position: 'fixed',
+            top: tooltipPos.top,
+            left: tooltipPos.left,
+            zIndex: 9999,
+          }}
+        >
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
+            <p className="font-semibold text-gray-900 mb-1">{hoveredOffre.fournisseur}</p>
+            <p className="text-gray-600">DDM min : {new Date(hoveredOffre.ddm_min).toLocaleDateString('fr-FR')}</p>
+            <p className="text-gray-600">Valeur estimée : {formatEur(hoveredOffre.valeur_estimee)}</p>
+            <p className="text-gray-600">Score urgence : {hoveredOffre.score_urgence}/100</p>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
