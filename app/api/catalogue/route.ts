@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { DEMO_CATALOGUE, DEFAULT_PALLETISATION } from '@/app/lib/catalogue-data';
+import { DEFAULT_PALLETISATION } from '@/app/lib/catalogue-data';
 import type { CatalogueProduit, FluxType } from '@/app/lib/catalogue-data';
 
 /** Mapping nom produit → vraie marque (quand marque = nom fournisseur) */
@@ -155,19 +155,15 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await query;
 
-    if (!error && data && data.length > 0) {
-      const mapped = (data).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
-      return NextResponse.json({ produits: mapped, source: 'supabase' });
+    if (error) {
+      console.error('[catalogue] Erreur Supabase :', error.message);
+      return NextResponse.json({ produits: [], source: 'supabase', error: error.message });
     }
+
+    const mapped = (data ?? []).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
+    return NextResponse.json({ produits: mapped, source: 'supabase' });
   } catch (err) {
     console.error('[catalogue] Exception Supabase :', err instanceof Error ? err.message : err);
+    return NextResponse.json({ produits: [], source: 'error' });
   }
-
-  // Fallback to demo data
-  let produits = [...DEMO_CATALOGUE];
-  if (categorie && categorie !== 'Tout') {
-    produits = produits.filter(p => p.categorie === categorie);
-  }
-
-  return NextResponse.json({ produits, source: 'demo' });
 }
