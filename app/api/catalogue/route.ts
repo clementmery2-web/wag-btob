@@ -64,19 +64,29 @@ function tvaPourCategorie(cat: string): number {
   return 20;
 }
 
+/** Safe parsers — never throw on null/undefined */
+function safeFloat(v: unknown): number {
+  if (v == null) return 0;
+  const n = parseFloat(String(v));
+  return isNaN(n) ? 0 : n;
+}
+function safeInt(v: unknown): number {
+  if (v == null) return 0;
+  const n = parseInt(String(v), 10);
+  return isNaN(n) ? 0 : n;
+}
+
 /**
  * Mapping colonnes Supabase → CatalogueProduit.
- * Calcule le QMC selon le flux physique :
- *   stock_wag / transit → 1 carton (PCB)
- *   dropshipping → MAX(qmc_fournisseur, 1) palette
+ * Compatible avec l'ancien ET le nouveau schéma produits.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSupabaseToCatalogue(row: any): CatalogueProduit {
   const flux: FluxType = row.flux || 'stock_wag';
-  const pcb = Math.max(1, parseInt(row.qmc, 10) || parseInt(row.pcb, 10) || 1);
-  const palletisation = parseInt(row.palletisation, 10) || DEFAULT_PALLETISATION;
-  const qmcFourn = parseInt(row.qmc_fournisseur, 10) || 1;
-  const stockDispo = parseInt(row.stock_disponible, 10) || 0;
+  const pcb = Math.max(1, safeInt(row.qmc) || safeInt(row.pcb) || 1);
+  const palletisation = safeInt(row.palletisation) || DEFAULT_PALLETISATION;
+  const qmcFourn = safeInt(row.qmc_fournisseur) || 1;
+  const stockDispo = safeInt(row.stock_disponible) || 0;
 
   let min_commande: number;
   let min_commande_unite: 'carton' | 'palette';
@@ -116,11 +126,11 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
     ean: row.ean ?? null,
     categorie: row.categorie ?? '',
     contenance: row.contenance ?? '',
-    prix_wag_ht: parseFloat(row.prix_vente_wag_ht) || 0,
-    prix_gd_ht: parseFloat(row.pmc_reference) || 0,
-    remise_pct: parseFloat(row.remise_vs_gd) || 0,
-    marge_retail_estimee: parseFloat(row.marge_retail_estimee) || 0,
-    ddm: row.dluo ?? '',
+    prix_wag_ht: safeFloat(row.prix_vente_wag_ht) || safeFloat(row.prix_wag_ht) || 0,
+    prix_gd_ht: safeFloat(row.pmc_reference) || safeFloat(row.pmc_fournisseur) || 0,
+    remise_pct: safeFloat(row.remise_vs_gd) || 0,
+    marge_retail_estimee: safeFloat(row.marge_retail_estimee) || 0,
+    ddm: row.dluo ?? row.ddm ?? '',
     flux,
     pcb,
     palletisation,
@@ -132,8 +142,8 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
     fournisseur_nom: row.fournisseur_nom ?? null,
     stock_disponible: stockDispo,
     pmc_type: row.pmc_type ?? 'gd',
-    tva_taux: parseFloat(row.tva_taux) || tvaPourCategorie(row.categorie ?? ''),
-    prix_revente_conseille_ttc: parseFloat(row.prix_revente_conseille_ttc) || null,
+    tva_taux: safeFloat(row.tva_taux) || tvaPourCategorie(row.categorie ?? ''),
+    prix_revente_conseille_ttc: safeFloat(row.prix_revente_conseille_ttc) || null,
   };
 }
 
@@ -160,7 +170,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ produits: [], source: 'supabase', error: error.message });
     }
 
-    const mapped = (data ?? []).map(r => ({ ...mapSupabaseToCatalogue(r), created_at: r.created_at }));
+    const mapped = (data ?? []).map(r => {
+      try {
+        return { ...mapSupabaseToCatalogue(r), created_at: r.created_at };
+      } catch (e) {
+        console.error('[catalogue] Erreur mapping produit:', r.id, e);
+        return null;
+      }
+    }).filter(Boolean);
+    console.log('[catalogue] Retourne', mapped.length, 'produits sur', data?.length, 'lignes');
     return NextResponse.json({ produits: mapped, source: 'supabase' });
   } catch (err) {
     console.error('[catalogue] Exception Supabase :', err instanceof Error ? err.message : err);
