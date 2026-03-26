@@ -130,8 +130,8 @@ export function OffresClient() {
 
       {/* Tableau */}
       {!loading && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200">
+          <div className="overflow-x-auto overflow-y-visible">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
@@ -198,12 +198,14 @@ export function OffresClient() {
 
                     {/* Preview tooltip */}
                     {hoveredId === offre.id && (
-                      <td className="absolute right-0 top-full z-30 mt-1 mr-4" colSpan={9}>
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
-                          <p className="font-semibold text-gray-900 mb-1">{offre.fournisseur}</p>
-                          <p className="text-gray-600">DDM min : {new Date(offre.ddm_min).toLocaleDateString('fr-FR')}</p>
-                          <p className="text-gray-600">Valeur estimée : {formatEur(offre.valeur_estimee)}</p>
-                          <p className="text-gray-600">Score urgence : {offre.score_urgence}/100</p>
+                      <td className="relative p-0 border-0" style={{ width: 0, overflow: 'visible' }}>
+                        <div className="absolute right-4 top-0 z-50 mt-1 pointer-events-none">
+                          <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
+                            <p className="font-semibold text-gray-900 mb-1">{offre.fournisseur}</p>
+                            <p className="text-gray-600">DDM min : {new Date(offre.ddm_min).toLocaleDateString('fr-FR')}</p>
+                            <p className="text-gray-600">Valeur estimée : {formatEur(offre.valeur_estimee)}</p>
+                            <p className="text-gray-600">Score urgence : {offre.score_urgence}/100</p>
+                          </div>
                         </div>
                       </td>
                     )}
