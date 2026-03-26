@@ -130,7 +130,7 @@ export default function ConfirmationPage() {
           fontSize: '20px', fontWeight: 600,
           color: '#15803d', margin: '0 0 8px'
         }}>
-          Offres envoyees !
+          Offres envoy&eacute;es !
         </h1>
         <p style={{ fontSize: '14px', color: '#166534', margin: 0 }}>
           WAG vous contacte sous 24h sur{' '}
@@ -147,7 +147,7 @@ export default function ConfirmationPage() {
             {data.prenomNom || 'Acheteur'}
           </strong>
           {data.nomEnseigne && ` \u2014 ${data.nomEnseigne}`}
-          {' \u00B7 '}Envoye le {data.date}
+          {' \u00B7 '}Envoy&eacute; le {data.date}
         </div>
       )}
 
@@ -237,7 +237,7 @@ export default function ConfirmationPage() {
         fontSize: '12px', color: '#888',
         textAlign: 'center' as const, marginBottom: '1.5rem'
       }}>
-        Prix depart entrepot Saint-Ouen &mdash; Transport non inclus
+        Prix d&eacute;part entrep&ocirc;t Saint-Ouen &mdash; Transport non inclus
       </p>
 
       {/* Boutons */}
@@ -266,7 +266,7 @@ export default function ConfirmationPage() {
         lineHeight: '1.5'
       }}>
         Pour toute question, contactez votre interlocuteur Willy Anti-gaspi
-        ou ecrivez-nous a{' '}
+        ou &eacute;crivez-nous &agrave;{' '}
         <a
           href="mailto:bonjour@willyantigaspi.fr"
           style={{ color: '#16a34a', textDecoration: 'none' }}
