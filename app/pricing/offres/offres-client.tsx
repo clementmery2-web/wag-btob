@@ -1,7 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { formatEur } from '../lib/types';
+
+const OPERATEURS = ['Chloé', 'Juliette', 'Solène', 'Clément', 'Jonathan', 'Marc', 'Eva', 'Test'];
 
 interface OffreData {
   id: string;
@@ -42,8 +45,48 @@ export function OffresClient() {
   const [error, setError] = useState<string | null>(null);
   const [filtrStatut, setFiltrStatut] = useState<string>('tous');
   const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [noteModal, setNoteModal] = useState<string | null>(null);
+  const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Tooltip state: fixed position + offre data
+  const [hoveredOffre, setHoveredOffre] = useState<OffreData | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  function handleMouseEnter(e: React.MouseEvent, offre: OffreData) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltipPos({ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 280) });
+    setHoveredOffre(offre);
+  }
+
+  function handleMouseLeave() {
+    setHoveredOffre(null);
+  }
+
+  // Outside click to close dropdown
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      setAssignDropdown(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (assignDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [assignDropdown, handleClickOutside]);
+
+  function handleAssign(offreId: string, nom: string) {
+    setOffres(prev => prev.map(o => o.id === offreId ? { ...o, assigne_a: nom } : o));
+    setAssignDropdown(null);
+    fetch(`/api/pricing/produits/${offreId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigne_a: nom }),
+    }).catch(err => console.error('[assigner] PATCH failed:', err));
+  }
 
   useEffect(() => {
     fetch('/api/pricing/offres')
@@ -150,9 +193,9 @@ export function OffresClient() {
                 {filtered.map(offre => (
                   <tr
                     key={offre.id}
-                    className="hover:bg-gray-50 transition-colors relative"
-                    onMouseEnter={() => setHoveredId(offre.id)}
-                    onMouseLeave={() => setHoveredId(null)}
+                    className="hover:bg-gray-50 transition-colors"
+                    onMouseEnter={(e) => handleMouseEnter(e, offre)}
+                    onMouseLeave={handleMouseLeave}
                   >
                     <td className="px-4 py-3">
                       <span title={PRIORITE_LABELS[offre.priorite]}>{PRIORITE_ICONS[offre.priorite]}</span>
@@ -170,11 +213,24 @@ export function OffresClient() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {offre.assigne_a ?? (
-                        <button className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
-                          Assigner
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          if (assignDropdown === offre.id) {
+                            setAssignDropdown(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                            setAssignDropdown(offre.id);
+                          }
+                        }}
+                        className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+                          offre.assigne_a
+                            ? 'text-gray-700 hover:bg-gray-100'
+                            : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {offre.assigne_a ?? 'Assigner'}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -195,18 +251,6 @@ export function OffresClient() {
                         </button>
                       </div>
                     </td>
-
-                    {/* Preview tooltip */}
-                    {hoveredId === offre.id && (
-                      <td className="absolute right-0 top-full z-30 mt-1 mr-4" colSpan={9}>
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
-                          <p className="font-semibold text-gray-900 mb-1">{offre.fournisseur}</p>
-                          <p className="text-gray-600">DDM min : {new Date(offre.ddm_min).toLocaleDateString('fr-FR')}</p>
-                          <p className="text-gray-600">Valeur estimée : {formatEur(offre.valeur_estimee)}</p>
-                          <p className="text-gray-600">Score urgence : {offre.score_urgence}/100</p>
-                        </div>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
@@ -216,6 +260,59 @@ export function OffresClient() {
             <div className="text-center py-8 text-sm text-gray-400">Aucune offre trouvée</div>
           )}
         </div>
+      )}
+
+      {/* Tooltip portal — fixed position, never clipped */}
+      {hoveredOffre && typeof document !== 'undefined' && createPortal(
+        <div
+          className="pointer-events-none"
+          style={{
+            position: 'fixed',
+            top: tooltipPos.top,
+            left: tooltipPos.left,
+            zIndex: 9999,
+          }}
+        >
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs w-64">
+            <p className="font-semibold text-gray-900 mb-1">{hoveredOffre.fournisseur}</p>
+            <p className="text-gray-600">DDM min : {new Date(hoveredOffre.ddm_min).toLocaleDateString('fr-FR')}</p>
+            <p className="text-gray-600">Valeur estimée : {formatEur(hoveredOffre.valeur_estimee)}</p>
+            <p className="text-gray-600">Score urgence : {hoveredOffre.score_urgence}/100</p>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Dropdown assigner portal — fixed position, never clipped */}
+      {assignDropdown && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            zIndex: 9999,
+            minWidth: 160,
+          }}
+        >
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+            {OPERATEURS.map(nom => {
+              const offre = filtered.find(o => o.id === assignDropdown);
+              return (
+                <button
+                  key={nom}
+                  onClick={() => handleAssign(assignDropdown, nom)}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 transition-colors ${
+                    offre?.assigne_a === nom ? 'font-bold text-indigo-600 bg-indigo-50' : 'text-gray-700'
+                  }`}
+                >
+                  {nom}
+                </button>
+              );
+            })}
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

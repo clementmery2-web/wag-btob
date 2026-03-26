@@ -1,64 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { verifySession } from '@/app/pricing/lib/auth';
-import { DEMO_OFFRES } from '@/app/pricing/lib/demo-data';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { calculerScenario, calculerPrixVenteWag, calculerMargeWag, calculerRemiseVsGd, getRemiseLabel } from '@/app/pricing/lib/types';
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
 
 /**
  * Map a Supabase produit row to the back-office Produit format.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapToBackofficeProduit(row: any) {
-  const prixAchat = parseFloat(row.prix_achat_wag_ht) || 0;
-  const pmcReference = parseFloat(row.pmc_reference) || null;
-  const pmcHt = parseFloat(row.pmc_ht) || null;
-  const pmcTtcGd = parseFloat(row.pmc_ttc_gd) || null;
+  const prixAchat = parseFloat(row.prix_achat_ht) || 0;
+  const prixWag = parseFloat(row.prix_wag_ht) || 0;
+  const pmc = parseFloat(row.pmc) || null;
   const tvaTaux = parseFloat(row.tva_taux) || 5.5;
-  const flux = row.flux || 'entrepot';
-  const pmcFiabilite = parseInt(row.pmc_fiabilite) || 0;
+  const flux = row.flux || 'dropshipping';
 
-  const prixVente = parseFloat(row.prix_vente_wag_ht) || (prixAchat > 0 ? calculerPrixVenteWag(prixAchat, flux) : 0);
-  const effectivePmc = pmcHt ?? pmcReference;
-  const scenario = effectivePmc && effectivePmc > 0 && prixAchat > 0 ? calculerScenario(prixAchat, effectivePmc) : null;
+  const prixVente = prixWag > 0 ? prixWag : (prixAchat > 0 ? calculerPrixVenteWag(prixAchat, flux) : 0);
+  const scenario = pmc && pmc > 0 && prixAchat > 0 ? calculerScenario(prixAchat, pmc) : null;
   const margeWag = prixVente > 0 ? calculerMargeWag(prixAchat, prixVente) : null;
-  const remiseGd = effectivePmc && effectivePmc > 0 ? calculerRemiseVsGd(prixVente, effectivePmc) : 0;
+  const remiseGd = pmc && pmc > 0 ? calculerRemiseVsGd(prixVente, pmc) : 0;
 
   return {
     id: row.id,
-    offre_id: row.fournisseur_id ? Buffer.from(String(row.fournisseur_id)).toString('base64url') : '',
+    offre_id: row.fournisseur_id ?? '',
     nom: row.nom ?? '',
     marque: row.marque ?? '',
     ean: row.ean ?? '',
-    contenance: row.contenance ?? '',
-    stock_disponible: parseInt(row.stock_disponible) || 0,
+    contenance: '',
+    stock_disponible: parseInt(row.quantite_disponible) || 0,
     flux,
-    ddm: row.dluo ?? '',
-    etat: row.etat ?? 'intact',
-    photo_url: row.photo_url ?? null,
+    ddm: row.ddm ?? '',
+    etat: 'intact',
+    photo_url: null,
     categorie: row.categorie ?? '',
     prix_achat_wag_ht: prixAchat,
-    pmc_ht: pmcHt,
-    pmc_reference: pmcReference,
-    pmc_ttc_gd: pmcTtcGd,
+    pmc_ht: pmc,
+    pmc_reference: pmc,
+    pmc_ttc_gd: pmc ? pmc * (1 + tvaTaux / 100) : null,
     tva_taux: tvaTaux,
-    pmc_fiabilite: pmcFiabilite,
-    pmc_statut: row.pmc_statut ?? 'non_trouve',
+    pmc_fiabilite: 0,
+    pmc_statut: pmc ? 'valide' : 'non_trouve',
     prix_vente_wag_ht: prixVente,
     marge_wag_pct: margeWag,
     remise_vs_gd_pct: remiseGd,
-    remise_label: effectivePmc ? getRemiseLabel('gd', remiseGd) : '',
+    remise_label: pmc ? getRemiseLabel('gd', remiseGd) : '',
     scenario,
     statut: row.statut ?? 'a_traiter',
-    note_interne: row.note_interne ?? '',
+    note_interne: '',
     fournisseur_id: row.fournisseur_id ?? null,
-    visible_catalogue: row.visible_catalogue ?? false,
+    visible_catalogue: row.statut === 'en_ligne',
     created_at: row.created_at ?? '',
     updated_at: row.updated_at ?? '',
   };
@@ -72,61 +61,96 @@ export async function GET(req: NextRequest) {
   const produitId = req.nextUrl.searchParams.get('id');
   const fournisseur = req.nextUrl.searchParams.get('fournisseur');
 
-  // Try Supabase
-  const supabase = getSupabase();
-  if (supabase) {
-    try {
-      let query = supabase.from('produits').select('*');
+  // Si offre_id fourni, chercher l'offre dans produits_offres
+  // puis les produits liés via fournisseur_id
+  if (offreId) {
+    // D'abord récupérer l'offre
+    const { data: offre } = await supabaseAdmin
+      .from('produits_offres')
+      .select('*')
+      .eq('id', offreId)
+      .single();
 
-      if (produitId) {
-        query = query.eq('id', produitId);
-      } else if (fournisseur) {
-        query = query.eq('fournisseur_id', fournisseur);
-      } else if (offreId) {
-        // offreId is base64url-encoded fournisseur_id (UUID)
-        try {
-          const decoded = Buffer.from(offreId, 'base64url').toString('utf-8');
-          query = query.eq('fournisseur_id', decoded);
-        } catch {
-          // If decode fails, try as literal
-          query = query.eq('fournisseur_id', offreId);
-        }
+    if (offre?.fournisseur_id) {
+      // Chercher les produits du même fournisseur
+      const { data: produits } = await supabaseAdmin
+        .from('produits')
+        .select('*')
+        .eq('fournisseur_id', offre.fournisseur_id)
+        .order('created_at', { ascending: false });
+
+      if (produits && produits.length > 0) {
+        const enriched = produits.map(mapToBackofficeProduit);
+        return NextResponse.json({
+          produits: enriched,
+          fournisseur_nom: offre.fournisseur_nom,
+          source: 'supabase',
+        });
       }
-
-      query = query.order('created_at', { ascending: false });
-
-      const { data, error } = await query;
-
-      if (!error && data && data.length > 0) {
-        const enriched = data.map(mapToBackofficeProduit);
-        return NextResponse.json({ produits: enriched, source: 'supabase' });
-      }
-    } catch (err) {
-      console.error('[produits] Supabase error:', err);
     }
+
+    // Pas de produits liés — renvoyer un produit virtuel depuis l'offre
+    if (offre) {
+      return NextResponse.json({
+        produits: [{
+          id: offre.id,
+          offre_id: offre.id,
+          nom: `Offre ${offre.fournisseur_nom ?? 'fournisseur'}`,
+          marque: offre.fournisseur_nom ?? '-',
+          ean: '',
+          contenance: '',
+          stock_disponible: 0,
+          flux: 'dropshipping',
+          ddm: offre.ddm_min ?? '',
+          etat: 'intact',
+          photo_url: null,
+          categorie: '',
+          prix_achat_wag_ht: 0,
+          pmc_ht: offre.pmc ?? null,
+          pmc_reference: offre.pmc ?? null,
+          pmc_ttc_gd: null,
+          tva_taux: 5.5,
+          pmc_fiabilite: 0,
+          pmc_statut: 'non_trouve',
+          prix_vente_wag_ht: 0,
+          marge_wag_pct: null,
+          remise_vs_gd_pct: null,
+          remise_label: '',
+          scenario: null,
+          statut: offre.statut ?? 'a_traiter',
+          note_interne: offre.note_operateur ?? '',
+          fournisseur_id: offre.fournisseur_id ?? null,
+          fournisseur_nom: offre.fournisseur_nom ?? '',
+          visible_catalogue: false,
+          created_at: offre.created_at ?? '',
+          updated_at: offre.updated_at ?? '',
+        }],
+        fournisseur_nom: offre.fournisseur_nom,
+        source: 'supabase',
+      });
+    }
+
+    return NextResponse.json({ produits: [], source: 'supabase' });
   }
 
-  // Fallback demo
-  let produits = DEMO_OFFRES.flatMap(o => o.produits);
+  // Requête standard sur produits
+  let query = supabaseAdmin.from('produits').select('*');
 
-  if (offreId) produits = produits.filter(p => p.offre_id === offreId);
-  if (produitId) produits = produits.filter(p => p.id === produitId);
+  if (produitId) {
+    query = query.eq('id', produitId);
+  } else if (fournisseur) {
+    query = query.eq('fournisseur_id', fournisseur);
+  }
 
-  const enriched = produits.map(p => {
-    const pmcHt = p.pmc_ht ?? 0;
-    const scenario = pmcHt > 0 ? calculerScenario(p.prix_achat_wag_ht, pmcHt) : null;
-    const prixVente = p.prix_vente_wag_ht ?? calculerPrixVenteWag(p.prix_achat_wag_ht, p.flux);
-    const margeWag = calculerMargeWag(p.prix_achat_wag_ht, prixVente);
-    const remiseGd = pmcHt > 0 ? calculerRemiseVsGd(prixVente, pmcHt) : 0;
-    return {
-      ...p,
-      scenario,
-      prix_vente_wag_ht: prixVente,
-      marge_wag_pct: margeWag,
-      remise_vs_gd_pct: remiseGd,
-      remise_label: getRemiseLabel('gd', remiseGd),
-    };
-  });
+  query = query.order('created_at', { ascending: false });
 
-  return NextResponse.json({ produits: enriched, source: 'demo' });
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('[produits] Supabase error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const enriched = (data ?? []).map(mapToBackofficeProduit);
+  return NextResponse.json({ produits: enriched, source: 'supabase' });
 }

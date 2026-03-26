@@ -1,85 +1,72 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { verifySession } from '@/app/pricing/lib/auth';
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function GET() {
   const auth = await verifySession();
   if (!auth) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
 
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
-  }
-
   // ── KPIs ──
   const [
+    { count: offresATraiter },
     { count: produitsEnLigne },
-    { count: pmcManuelRequis },
-    { data: allProduits },
-    { data: notifications },
+    { data: produitsEnLigneData },
+    { data: activiteRecente },
   ] = await Promise.all([
-    supabase.from('produits').select('*', { count: 'exact', head: true }).eq('visible_catalogue', true),
-    supabase.from('produits').select('*', { count: 'exact', head: true }).or('pmc_statut.is.null,pmc_statut.eq.manuel_requis'),
-    supabase.from('produits').select('prix_achat_wag_ht, prix_vente_wag_ht, stock_disponible, statut, fournisseur_id, visible_catalogue'),
-    supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20),
+    supabaseAdmin
+      .from('produits_offres')
+      .select('*', { count: 'exact', head: true })
+      .in('statut', ['nouvelle', 'en_cours']),
+    supabaseAdmin
+      .from('produits')
+      .select('*', { count: 'exact', head: true })
+      .eq('statut', 'valide'),
+    supabaseAdmin
+      .from('produits')
+      .select('prix_achat_ht, prix_wag_ht, quantite_disponible')
+      .eq('statut', 'valide'),
+    supabaseAdmin
+      .from('produits_offres')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10),
   ]);
 
-  const produits = allProduits ?? [];
+  const produits = produitsEnLigneData ?? [];
 
-  // Count distinct fournisseurs with unprocessed products
-  const fournisseursATraiter = new Set(
-    produits.filter(p => p.statut === 'a_traiter' || p.statut === 'nouvelle' || !p.statut).map(p => p.fournisseur_id)
+  // CA potentiel
+  const caPotentiel = produits.reduce(
+    (s, p) => s + (parseFloat(p.prix_wag_ht) || 0) * (parseInt(p.quantite_disponible) || 0),
+    0
   );
 
-  const enLigne = produits.filter(p => p.visible_catalogue === true);
-  const caPotentiel = enLigne.reduce((s, p) => s + (parseFloat(p.prix_vente_wag_ht) || 0) * (parseInt(p.stock_disponible) || 0), 0);
-  const engagement = produits.reduce((s, p) => s + (parseFloat(p.prix_achat_wag_ht) || 0) * (parseInt(p.stock_disponible) || 0), 0);
-
-  // Compute marge from prix_achat and prix_vente
+  // Marge WAG moyenne
   const marges = produits
     .map(p => {
-      const achat = parseFloat(p.prix_achat_wag_ht) || 0;
-      const vente = parseFloat(p.prix_vente_wag_ht) || 0;
+      const achat = parseFloat(p.prix_achat_ht) || 0;
+      const vente = parseFloat(p.prix_wag_ht) || 0;
       return achat > 0 && vente > 0 ? ((vente - achat) / vente) * 100 : 0;
     })
     .filter(m => m > 0);
   const margeMoy = marges.length ? marges.reduce((a, b) => a + b, 0) / marges.length : 0;
 
   const kpis = {
-    offres_a_traiter: fournisseursATraiter.size,
+    offres_a_traiter: offresATraiter ?? 0,
     produits_en_ligne: produitsEnLigne ?? 0,
     ca_potentiel: Math.round(caPotentiel),
-    engagement_potentiel: Math.round(engagement),
+    engagement_potentiel: 0,
     marge_wag_moyenne: Math.round(margeMoy * 10) / 10,
     taux_acceptation_contre_offres: 0,
-    pmc_manuel_requis: pmcManuelRequis ?? 0,
+    pmc_manuel_requis: 0,
   };
 
-  // ── Alertes from notifications ──
-  const alertes = (notifications ?? [])
-    .filter(n => !n.lu)
-    .slice(0, 5)
-    .map(n => ({
-      type: n.type ?? 'info',
-      message: n.contenu ?? n.message ?? '',
-      produit_id: n.produit_id,
-      depuis: n.created_at,
-    }));
-
-  // ── Activité récente ──
-  const activite = (notifications ?? []).slice(0, 10).map(n => ({
-    id: n.id,
-    type: n.type ?? 'info',
-    description: n.contenu ?? n.message ?? '',
-    created_at: n.created_at,
+  // ── Activité récente (depuis produits_offres) ──
+  const activite = (activiteRecente ?? []).map(o => ({
+    id: o.id,
+    type: o.statut === 'nouvelle' ? 'offre_recue' : 'traitement',
+    description: `Offre ${o.source ?? o.fournisseur_nom ?? 'Fournisseur sans nom'} — ${o.nb_references ?? '-'} référence(s)`,
+    created_at: o.created_at,
   }));
 
-  return NextResponse.json({ kpis, alertes, activite, source: 'supabase' });
+  return NextResponse.json({ kpis, alertes: [], activite, source: 'supabase' });
 }
