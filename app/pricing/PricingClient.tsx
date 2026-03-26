@@ -271,19 +271,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   // ─── Render ─────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#dcfce7] rounded-lg flex items-center justify-center">
-            <span className="text-[#16a34a] font-bold text-sm">W</span>
-          </div>
-          <span className="font-bold text-gray-900 text-sm">WAG Pricing</span>
-          <span className="text-gray-400 mx-1">|</span>
-          <span className="text-sm text-gray-600">Validation pricing — produits en attente</span>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+    <div className="space-y-4">
         {produits.length === 0 && (
           <div className="text-center py-20 text-sm text-gray-400">Aucun produit en attente de validation</div>
         )}
@@ -372,8 +360,13 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                     Générer email négo
                   </button>
                 )}
-                {nbPrets > 0 && (
-                  <button disabled={validating[groupe.nom]} onClick={() => handleValider(groupe.nom)} className="text-xs font-medium text-white px-3 py-1 rounded-md disabled:opacity-50" style={{ background: '#16a34a' }}>
+                {(
+                  <button
+                    disabled={nbPrets === 0 || validating[groupe.nom]}
+                    title={nbPrets === 0 ? 'Saisissez les PMC manquants pour débloquer la validation' : `${nbPrets} produit(s) prêt(s) à valider`}
+                    onClick={() => handleValider(groupe.nom)}
+                    style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px', border: 'none', background: nbPrets === 0 ? '#e5e7eb' : '#16a34a', color: nbPrets === 0 ? '#9ca3af' : 'white', cursor: nbPrets === 0 ? 'not-allowed' : 'pointer', fontWeight: 500 }}
+                  >
                     {validating[groupe.nom] ? 'Validation…' : `✓ Valider les ${nbPrets} prêts`}
                   </button>
                 )}
@@ -533,7 +526,6 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
             </div>
           )
         })}
-      </div>
 
       {/* Modale 3 onglets */}
       {modalGroupe !== null && (() => {
