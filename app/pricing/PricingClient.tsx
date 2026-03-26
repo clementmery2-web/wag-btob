@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Produit, GroupeFournisseur } from './types'
 import { calculerScenarioResult, formaterDate, calculerJoursDDM } from './pricingUtils'
+import PmcImportModal from './PmcImportModal'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -263,6 +264,18 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
     } finally {
       setConfirmingNego(prev => ({ ...prev, [produit.id]: false }))
     }
+  }
+
+  const handlePmcImported = (updates: { id: string; pmc: number }[]) => {
+    setProduits(prev => prev.map(p => {
+      const update = updates.find(u => u.id === p.id)
+      return update ? { ...p, pmc_fournisseur: update.pmc } : p
+    }))
+    setPmcEdits(prev => {
+      const next = { ...prev }
+      for (const u of updates) delete next[u.id]
+      return next
+    })
   }
 
   const countByScenario = (items: Produit[], ...scenarios: string[]) =>
@@ -554,6 +567,15 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
           </div>
         )
       })()}
+
+      {showPmcImport && (
+        <PmcImportModal
+          key={Date.now()}
+          produits={produits}
+          onClose={() => setShowPmcImport(false)}
+          onImported={handlePmcImported}
+        />
+      )}
     </div>
   )
 }
