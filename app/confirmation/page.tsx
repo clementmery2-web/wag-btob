@@ -256,22 +256,24 @@ export default function ConfirmationPage() {
         >
           Voir de nouvelles offres &rarr;
         </button>
-
-        <a
-          href={`mailto:${WAG_EMAIL}?subject=${mailtoSubject}&body=${mailtoBody}`}
-          style={{
-            width: '100%', padding: '12px',
-            background: 'white', color: '#16a34a',
-            border: '1px solid #16a34a', borderRadius: '8px',
-            fontSize: '14px', fontWeight: 500,
-            textAlign: 'center' as const,
-            textDecoration: 'none', display: 'block',
-            boxSizing: 'border-box' as const
-          }}
-        >
-          Contacter WAG par email
-        </a>
       </div>
+
+      <p style={{
+        fontSize: '13px',
+        color: '#888',
+        textAlign: 'center' as const,
+        marginTop: '12px',
+        lineHeight: '1.5'
+      }}>
+        Pour toute question, contactez votre interlocuteur Willy Anti-gaspi
+        ou ecrivez-nous a{' '}
+        <a
+          href="mailto:bonjour@willyantigaspi.fr"
+          style={{ color: '#16a34a', textDecoration: 'none' }}
+        >
+          bonjour@willyantigaspi.fr
+        </a>
+      </p>
 
     </main>
   )
