@@ -39,6 +39,7 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([])
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [unmatchedCount, setUnmatchedCount] = useState(0)
+  const [noHeaderMode, setNoHeaderMode] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -58,9 +59,8 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
   }
 
   const detectPmcCol = (rows: Record<string, unknown>[], eanColName: string | null): string | null => {
-    if (rows.length === 0) return null
-    const PMC_HINTS = ['pmc', 'pvc', 'prix_vente', 'prix_marche', 'prix_reference', 'prix marché', 'tarif', 'prix_consommateur', 'pvttc', 'pvht']
-    const headers = Object.keys(rows[0]).filter(h => h !== eanColName)
+    const PMC_HINTS = ['pmc', 'pvc', 'prix_vente', 'prix_marche', 'prix_reference', 'tarif', 'prix_consommateur', 'pvttc', 'pvht', 'prix']
+    const headers = Object.keys(rows[0] ?? {}).filter(h => h !== eanColName)
     for (const hint of PMC_HINTS) {
       const found = headers.find(h => h.toLowerCase().includes(hint))
       if (found) return found
@@ -68,8 +68,8 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
     for (const h of headers) {
       const vals = rows.slice(0, 10)
         .map(r => parseFloat(String(r[h] ?? '').replace(',', '.')))
-        .filter(v => !isNaN(v) && v > 0.5 && v < 50)
-      if (vals.length >= 5) return h
+        .filter(v => !isNaN(v) && v >= 0.5 && v <= 50)
+      if (vals.length >= Math.min(5, rows.length * 0.5)) return h
     }
     return null
   }
@@ -83,7 +83,29 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
-      const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+      const hasEmptyHeaders = (r: Record<string, unknown>[]) =>
+        Object.keys(r[0] ?? {}).every(k => k.startsWith('__EMPTY') || k === '')
+
+      let rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+      if (hasEmptyHeaders(rows) && rows.length > 1) {
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '', range: 1 })
+      }
+
+      if (hasEmptyHeaders(rows)) {
+        const rawRowsArr = XLSX.utils.sheet_to_json(sheet, { defval: '', header: 1 }) as unknown[][]
+        if (rawRowsArr.length > 0) {
+          const headers = (rawRowsArr[0] as unknown[]).map((_, i) => String.fromCharCode(65 + i))
+          rows = rawRowsArr.slice(1).map(row =>
+            Object.fromEntries(headers.map((h, i) => [h, (row as unknown[])[i] ?? '']))
+          )
+          setNoHeaderMode(true)
+        }
+      } else {
+        setNoHeaderMode(false)
+      }
+
       if (rows.length === 0) { setError('Fichier vide ou format non reconnu'); setLoading(false); return }
       setRawRows(rows)
       const detectedEan = detectEanCol(rows)
@@ -223,7 +245,7 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
                     <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, background: isSelected ? '#16a34a' : 'transparent', border: isSelected ? 'none' : '1.5px solid #d1d5db', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {isSelected && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'white' }} />}
                     </div>
-                    <code style={{ fontSize: '13px', color: isSelected ? '#15803d' : '#374151', minWidth: 140 }}>{col.name}</code>
+                    <code style={{ fontSize: '13px', color: isSelected ? '#15803d' : '#374151', minWidth: 140 }}>{noHeaderMode ? `Colonne ${col.name}` : col.name}</code>
                     <span style={{ fontSize: '11px', color: isSelected ? '#16a34a' : '#9ca3af', fontFamily: 'monospace', marginLeft: 'auto' }}>{col.samples.join(' · ')}</span>
                     {isRecommended && <span style={{ fontSize: '10px', color: '#15803d', background: '#dcfce7', padding: '1px 6px', borderRadius: '9999px', fontWeight: 500, flexShrink: 0 }}>Suggéré</span>}
                   </div>
