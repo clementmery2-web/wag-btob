@@ -70,7 +70,9 @@ export default function OffresPage() {
       .then(r => r.json())
       .then(data => {
         const raw = data.produits ?? data
-        console.log('[catalogue] source:', data.source, 'produits fetched:', raw.length, 'first:', raw[0] ? JSON.stringify(raw[0]).slice(0, 200) : 'none')
+        console.log('[catalogue] source:', data.source, 'count:', raw.length)
+        if (raw[0]) console.log('[catalogue] first keys:', Object.keys(raw[0]).join(', '))
+        if (raw[0]) console.log('[catalogue] first prix_wag_ht:', raw[0].prix_wag_ht, 'marque:', raw[0].marque, 'nom:', raw[0].nom, 'categorie:', raw[0].categorie)
         setLignesOffre(raw.map((p: Produit) => ({
           produit: {
             id: p.id,
@@ -233,6 +235,13 @@ export default function OffresPage() {
     email.includes('@') && email.includes('.')
 
   const nbFiltre = Object.values(groupes).reduce((s, g) => s + g.length, 0)
+  // Debug: log groupes
+  useEffect(() => {
+    console.log('[catalogue] lignesOffre:', lignesOffre.length, 'groupes:', Object.keys(groupes).length, 'nbFiltre:', nbFiltre)
+    if (lignesOffre.length > 0 && nbFiltre === 0) {
+      console.log('[catalogue] BUG: lignes existent mais groupes vide. Premier produit:', JSON.stringify(lignesOffre[0]?.produit))
+    }
+  }, [lignesOffre, groupes, nbFiltre])
 
   // ─── Soumission ─────────────────────────────────────────────
 
