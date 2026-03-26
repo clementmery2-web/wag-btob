@@ -28,19 +28,24 @@ export function calculerScenarioResult(
     return { scenario: 'PMC_REQUIS', pmc: null, ratio: null, gap: null, pv: null, multiplicateur: null, marge: null, cible: null }
   }
 
-  const ratio = pa / pmc * 100
-  const gap = (pa - pmc * 0.55) / pa * 100
+  const ratio = Math.round(pa / pmc * 100 * 10) / 10
+  const gap = Math.round((pa - pmc * 0.55) / pa * 100 * 10) / 10
 
   if (ratio < 30) {
-    const pv = pmc * 0.40
-    return { scenario: 'A', pmc, ratio, gap, pv, multiplicateur: pv / pa, marge: (pv - pa) / pv * 100, cible: null }
+    const pv = Math.round(pmc * 0.40 * 100) / 100
+    const multiplicateur = Math.round((pv / pa) * 100) / 100
+    const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
+    return { scenario: 'A', pmc, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
   if (ratio <= 55) {
-    const pv = pmc * 0.55
-    return { scenario: 'B', pmc, ratio, gap, pv, multiplicateur: pv / pa, marge: (pv - pa) / pv * 100, cible: null }
+    const pv = Math.round(pmc * 0.55 * 100) / 100
+    const multiplicateur = Math.round((pv / pa) * 100) / 100
+    const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
+    return { scenario: 'B', pmc, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
   if (gap <= 50) {
-    return { scenario: 'C', pmc, ratio, gap, pv: null, multiplicateur: null, marge: null, cible: pmc * 0.55 / 1.15 }
+    const cible = Math.round(pmc * 0.55 / 1.15 * 100) / 100
+    return { scenario: 'C', pmc, ratio, gap, pv: null, multiplicateur: null, marge: null, cible }
   }
   return { scenario: 'D', pmc, ratio, gap, pv: null, multiplicateur: null, marge: null, cible: null }
 }
