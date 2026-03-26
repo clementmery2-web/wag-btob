@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { MeilleureOffre } from '@/components/MeilleureOffre'
 import { supabase } from '@/lib/supabase-client'
 
@@ -44,13 +45,14 @@ const formatEur = (n: number): string =>
 // ─── Page ─────────────────────────────────────────────────────
 
 export default function OffresPage() {
+  const router = useRouter()
   const [lignesOffre, setLignesOffre] = useState<LigneOffre[]>([])
   const [loadingData, setLoadingData] = useState(true)
   const [prenomNom, setPrenomNom] = useState('')
   const [nomEnseigne, setNomEnseigne] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [confirmation, setConfirmation] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
   const [filtreCat, setFiltreCat] = useState('toutes')
   const [filtreDdm, setFiltreDdm] = useState('toutes')
   const [tri, setTri] = useState('ddm')
@@ -234,6 +236,16 @@ export default function OffresPage() {
 
   const handleSubmit = async () => {
     setLoading(true)
+    setErreur(null)
+
+    const snapshot = lignesActives.map(l => ({
+      nom: l.produit.nom,
+      marque: l.produit.marque,
+      prixOffre: l.prixOffre!,
+      quantite: l.quantite!,
+      sousTotal: l.prixOffre! * l.quantite!
+    }))
+
     try {
       for (const ligne of lignesActives) {
         const jours = getJours(ligne.produit.ddm) ?? 999
@@ -259,16 +271,27 @@ export default function OffresPage() {
         if (error) throw new Error(error.message)
       }
 
+      localStorage.setItem('wag_confirmation', JSON.stringify({
+        offres: snapshot,
+        totalHT: lignesActives.reduce(
+          (acc, l) => acc + l.prixOffre! * l.quantite!, 0
+        ),
+        prenomNom: prenomNom || '',
+        nomEnseigne: nomEnseigne || '',
+        email: email || '',
+        date: new Date().toLocaleDateString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric'
+        })
+      }))
+
       localStorage.setItem('wag_prenom_nom', prenomNom)
       localStorage.setItem('wag_nom_enseigne', nomEnseigne)
       localStorage.setItem('wag_email', email)
 
-      setLignesOffre(prev => prev.map(l => ({ ...l, prixOffre: null, quantite: null })))
-      setConfirmation(true)
-      setTimeout(() => setConfirmation(false), 5000)
+      router.push('/confirmation')
     } catch (e) {
-      console.error('Erreur:', e)
-    } finally {
+      console.error('Erreur soumission:', e)
+      setErreur('Une erreur est survenue. Veuillez reessayer.')
       setLoading(false)
     }
   }
@@ -523,11 +546,6 @@ export default function OffresPage() {
 
       {/* Barre soumission sticky — EN DEHORS du div overflowX */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40">
-        {confirmation && (
-          <div className="bg-green-50 border-b border-green-200 px-4 py-3 text-sm text-green-700 text-center font-medium">
-            Offres envoyees &mdash; WAG vous contacte sous 24h
-          </div>
-        )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
           <input
             value={prenomNom}
@@ -554,6 +572,9 @@ export default function OffresPage() {
               <span className="ml-2 text-xs text-red-500 font-medium">({lignesInvalides.length} a corriger)</span>
             )}
           </div>
+          {erreur && (
+            <p className="w-full text-xs text-red-600" style={{ margin: '4px 0' }}>{erreur}</p>
+          )}
           <button
             disabled={!peutEnvoyer || loading}
             onClick={handleSubmit}
