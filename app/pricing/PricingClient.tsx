@@ -253,7 +253,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                   {/* Table */}
                   <div style={{ overflowX: 'auto' }}>
                     {/* Col headers */}
-                    <div className="grid gap-2 px-4 py-2 border-t border-b border-gray-100 text-[11px] font-semibold text-gray-400 uppercase tracking-wide" style={{ gridTemplateColumns: '1.8fr 80px 65px 110px 72px 80px 160px', minWidth: '800px' }}>
+                    <div className="grid gap-2 px-4 py-2 border-t border-b border-gray-100 text-[11px] font-semibold text-gray-400 uppercase tracking-wide" style={{ gridTemplateColumns: '22% 9% 8% 16% 8% 10% 27%', minWidth: '900px' }}>
                       <span>Produit / EAN</span>
                       <span>Stock</span>
                       <span>PA HT</span>
@@ -274,7 +274,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                         <div
                           key={produit.id}
                           className="grid gap-2 px-4 py-2.5 border-b border-gray-50 items-center text-[13px] group"
-                          style={{ gridTemplateColumns: '1.8fr 80px 65px 110px 72px 80px 160px', minWidth: '800px', borderLeft: `4px solid ${BORDER_COLORS[r.scenario]}` }}
+                          style={{ gridTemplateColumns: '22% 9% 8% 16% 8% 10% 27%', minWidth: '900px', borderLeft: `4px solid ${BORDER_COLORS[r.scenario]}` }}
                         >
                           {/* Produit / EAN */}
                           <div>
