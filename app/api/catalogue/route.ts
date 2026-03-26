@@ -170,15 +170,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ produits: [], source: 'supabase', error: error.message });
     }
 
+    if (data && data[0]) {
+      const r = data[0];
+      console.log('[catalogue] RAW first row prix columns:', {
+        prix_vente_wag_ht: r.prix_vente_wag_ht,
+        prix_wag_ht: r.prix_wag_ht,
+        prix_achat_wag_ht: r.prix_achat_wag_ht,
+        type_prix_vente: typeof r.prix_vente_wag_ht,
+        all_keys: Object.keys(r).filter(k => k.includes('prix')).join(', '),
+      });
+    }
     const mapped = (data ?? []).map(r => {
       try {
-        return { ...mapSupabaseToCatalogue(r), created_at: r.created_at };
+        const m = mapSupabaseToCatalogue(r);
+        const prixVente = safeFloat(r.prix_vente_wag_ht) || safeFloat(r.prix_wag_ht) || 0;
+        return { ...m, plancher_ht: prixVente, created_at: r.created_at };
       } catch (e) {
         console.error('[catalogue] Erreur mapping produit:', r.id, e);
         return null;
       }
     }).filter(Boolean);
-    console.log('[catalogue] Retourne', mapped.length, 'produits sur', data?.length, 'lignes');
+    console.log('[catalogue] Retourne', mapped.length, 'produits, premier prix_wag_ht:', mapped[0] && 'prix_wag_ht' in mapped[0] ? (mapped[0] as Record<string, unknown>).prix_wag_ht : 'N/A');
     return NextResponse.json({ produits: mapped, source: 'supabase' });
   } catch (err) {
     console.error('[catalogue] Exception Supabase :', err instanceof Error ? err.message : err);
