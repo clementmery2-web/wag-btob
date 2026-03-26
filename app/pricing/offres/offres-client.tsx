@@ -47,6 +47,7 @@ export function OffresClient() {
   const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
   const [noteModal, setNoteModal] = useState<string | null>(null);
   const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Tooltip state: fixed position + offre data
@@ -211,9 +212,17 @@ export function OffresClient() {
                         {STATUT_LABELS[offre.statut]?.label ?? offre.statut}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center relative">
+                    <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => setAssignDropdown(assignDropdown === offre.id ? null : offre.id)}
+                        onClick={(e) => {
+                          if (assignDropdown === offre.id) {
+                            setAssignDropdown(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                            setAssignDropdown(offre.id);
+                          }
+                        }}
                         className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
                           offre.assigne_a
                             ? 'text-gray-700 hover:bg-gray-100'
@@ -222,21 +231,6 @@ export function OffresClient() {
                       >
                         {offre.assigne_a ?? 'Assigner'}
                       </button>
-                      {assignDropdown === offre.id && (
-                        <div ref={dropdownRef} className="absolute right-0 top-full z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-40">
-                          {OPERATEURS.map(nom => (
-                            <button
-                              key={nom}
-                              onClick={() => handleAssign(offre.id, nom)}
-                              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 transition-colors ${
-                                offre.assigne_a === nom ? 'font-bold text-indigo-600 bg-indigo-50' : 'text-gray-700'
-                              }`}
-                            >
-                              {nom}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -284,6 +278,38 @@ export function OffresClient() {
             <p className="text-gray-600">DDM min : {new Date(hoveredOffre.ddm_min).toLocaleDateString('fr-FR')}</p>
             <p className="text-gray-600">Valeur estimée : {formatEur(hoveredOffre.valeur_estimee)}</p>
             <p className="text-gray-600">Score urgence : {hoveredOffre.score_urgence}/100</p>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Dropdown assigner portal — fixed position, never clipped */}
+      {assignDropdown && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            zIndex: 9999,
+            minWidth: 160,
+          }}
+        >
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+            {OPERATEURS.map(nom => {
+              const offre = filtered.find(o => o.id === assignDropdown);
+              return (
+                <button
+                  key={nom}
+                  onClick={() => handleAssign(assignDropdown, nom)}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 transition-colors ${
+                    offre?.assigne_a === nom ? 'font-bold text-indigo-600 bg-indigo-50' : 'text-gray-700'
+                  }`}
+                >
+                  {nom}
+                </button>
+              );
+            })}
           </div>
         </div>,
         document.body
