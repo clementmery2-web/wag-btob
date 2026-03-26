@@ -11,10 +11,10 @@ const supabase = createBrowserClient(
 )
 
 const SCENARIO_BADGE: Record<string, { label: string; bg: string; text: string }> = {
-  A: { label: 'A \u2014 JACKPOT', bg: '#dcfce7', text: '#16a34a' },
-  B: { label: 'B \u2014 NORMAL', bg: '#dbeafe', text: '#2563eb' },
-  C: { label: 'N\u00e9go fournisseur', bg: '#fef3c7', text: '#d97706' },
-  D: { label: 'D \u2014 REFUS', bg: '#fee2e2', text: '#dc2626' },
+  A: { label: 'A — JACKPOT', bg: '#dcfce7', text: '#16a34a' },
+  B: { label: 'B — NORMAL', bg: '#dbeafe', text: '#2563eb' },
+  C: { label: 'Négo fournisseur', bg: '#fef3c7', text: '#d97706' },
+  D: { label: 'D — REFUS', bg: '#fee2e2', text: '#dc2626' },
   PMC_REQUIS: { label: 'PMC requis', bg: '#fef3c7', text: '#d97706' },
 }
 
@@ -22,7 +22,7 @@ const BORDER_COLORS: Record<string, string> = {
   A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', PMC_REQUIS: '#d97706'
 }
 
-const OWNERS = ['\u2014 Assigner', 'Juliette', 'Lucas', 'Marie']
+const OWNERS = ['— Assigner', 'Juliette', 'Lucas', 'Marie']
 
 export default function PricingClient({ initialProduits }: { initialProduits: Produit[] }) {
   const [produits, setProduits] = useState<Produit[]>(initialProduits)
@@ -118,7 +118,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
     } catch {
       if (succeededIds.length > 0) setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
-      setErrors(prev => ({ ...prev, [groupeNom]: `Erreur (${succeededIds.length}/${produitsAValider.length} valid\u00e9s). R\u00e9essayez.` }))
+      setErrors(prev => ({ ...prev, [groupeNom]: `Erreur (${succeededIds.length}/${produitsAValider.length} validés). Réessayez.` }))
     } finally {
       setValidating(prev => ({ ...prev, [groupeNom]: false }))
     }
@@ -134,7 +134,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       if (error) throw error
       setProduits(prev => prev.filter(p => p.id !== produit.id))
     } catch (err) {
-      console.error('Erreur confirmation n\u00e9go:', err)
+      console.error('Erreur confirmation négo:', err)
     } finally {
       setConfirmingNego(prev => ({ ...prev, [produit.id]: false }))
     }
@@ -153,9 +153,9 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
     const negoItems = groupe.produits.filter(p => calculerScenarioResult(p, pmcEdits).scenario === 'C')
     const lignes = negoItems.map(p => {
       const r = calculerScenarioResult(p, pmcEdits)
-      return `- ${p.nom} : votre prix ${fmt(p.prix_achat_wag_ht)} \u20ac HT \u2192 notre cible ${fmt(r.cible!)} \u20ac HT`
+      return `- ${p.nom} : votre prix ${fmt(p.prix_achat_wag_ht)} € HT → notre cible ${fmt(r.cible!)} € HT`
     }).join('\n')
-    return `Bonjour,\n\nNous souhaitons vous soumettre une contre-offre sur les r\u00e9f\u00e9rences suivantes :\n\n${lignes}\n\nMerci de confirmer votre accord ou de proposer un prix interm\u00e9diaire.\n\nCordialement,\nWilly Anti-gaspi \u2014 bonjour@willyantigaspi.fr`
+    return `Bonjour,\n\nNous souhaitons vous soumettre une contre-offre sur les références suivantes :\n\n${lignes}\n\nMerci de confirmer votre accord ou de proposer un prix intermédiaire.\n\nCordialement,\nWilly Anti-gaspi — bonjour@willyantigaspi.fr`
   }
 
   // ─── Render ─────────────────────────────────────────────────
@@ -170,7 +170,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
           </div>
           <span className="font-bold text-gray-900 text-sm">WAG Pricing</span>
           <span className="text-gray-400 mx-1">|</span>
-          <span className="text-sm text-gray-600">Validation pricing \u2014 produits en attente</span>
+          <span className="text-sm text-gray-600">Validation pricing — produits en attente</span>
         </div>
       </header>
 
@@ -196,13 +196,13 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-bold text-gray-900 uppercase">{groupe.nom}</span>
                   <p className="text-xs text-gray-500">
-                    {groupe.produits.length} produits \u00B7 import\u00e9 le {mounted ? formaterDate(groupe.dateImport.toISOString().slice(0, 10)) : '\u2014'}
+                    {groupe.produits.length} produits · importé le {mounted ? formaterDate(groupe.dateImport.toISOString().slice(0, 10)) : '—'}
                   </p>
                 </div>
 
                 {isCollapsed && (
                   <span className="text-xs text-gray-500">
-                    {pretsCount} pr\u00eats \u00B7 {pmcCount} PMC \u00B7 {negoCount} n\u00e9go \u00B7 {refusCount} refus
+                    {pretsCount} prêts · {pmcCount} PMC · {negoCount} négo · {refusCount} refus
                   </span>
                 )}
 
@@ -220,7 +220,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                     className="text-xs font-medium px-3 py-1 rounded-md border"
                     style={{ borderColor: '#d97706', color: '#d97706' }}
                   >
-                    G\u00e9n\u00e9rer email n\u00e9go
+                    Générer email négo
                   </button>
                 )}
 
@@ -231,7 +231,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                     className="text-xs font-medium text-white px-3 py-1 rounded-md disabled:opacity-50"
                     style={{ background: '#16a34a' }}
                   >
-                    {validating[groupe.nom] ? 'Validation\u2026' : `\u2713 Valider les ${pretsCount} pr\u00eats`}
+                    {validating[groupe.nom] ? 'Validation\u2026' : `\u2713 Valider les ${pretsCount} prêts`}
                   </button>
                 )}
               </div>
@@ -244,10 +244,10 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                 <>
                   {/* Stats */}
                   <div className="grid grid-cols-4 gap-2 px-4 py-2 border-t border-gray-100 text-xs">
-                    <span style={{ color: '#16a34a' }} className="font-semibold">{pretsCount} Pr\u00eats \u00e0 valider</span>
+                    <span style={{ color: '#16a34a' }} className="font-semibold">{pretsCount} Prêts à valider</span>
                     <span style={{ color: '#d97706' }} className="font-semibold">{pmcCount} PMC manquant</span>
-                    <span style={{ color: '#d97706' }} className="font-semibold">{negoCount} En n\u00e9go</span>
-                    <span style={{ color: '#dc2626' }} className="font-semibold">{refusCount} Refus\u00e9s</span>
+                    <span style={{ color: '#d97706' }} className="font-semibold">{negoCount} En négo</span>
+                    <span style={{ color: '#dc2626' }} className="font-semibold">{refusCount} Refusés</span>
                   </div>
 
                   {/* Table */}
@@ -260,7 +260,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                       <span>PMC</span>
                       <span>PA/PMC</span>
                       <span>DDM</span>
-                      <span>Sc\u00e9nario</span>
+                      <span>Scénario</span>
                     </div>
 
                     {/* Rows */}
@@ -280,28 +280,28 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                           <div>
                             <p className="font-medium text-gray-900 text-sm leading-tight">{produit.nom}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs text-gray-400">{produit.ean || '\u2014'}</span>
+                              <span className="text-xs text-gray-400">{produit.ean || '—'}</span>
                               <span className="hidden group-hover:inline text-[10px] text-indigo-500 cursor-pointer" onClick={() => produit.ean && handleCopy(produit.ean, produit.id + '-ean')}>
-                                {copiedId === produit.id + '-ean' ? 'Copi\u00e9 !' : 'copier EAN'}
+                                {copiedId === produit.id + '-ean' ? 'Copié !' : 'copier EAN'}
                               </span>
                               <span className="hidden group-hover:inline text-[10px] text-indigo-500 cursor-pointer" onClick={() => handleCopy(produit.nom, produit.id + '-nom')}>
-                                {copiedId === produit.id + '-nom' ? 'Copi\u00e9 !' : 'copier nom'}
+                                {copiedId === produit.id + '-nom' ? 'Copié !' : 'copier nom'}
                               </span>
                             </div>
                           </div>
 
                           {/* Stock */}
-                          <span className="text-gray-600 text-xs">{produit.stock_disponible ?? '\u2014'} ctn</span>
+                          <span className="text-gray-600 text-xs">{produit.stock_disponible ?? '—'} ctn</span>
 
                           {/* PA HT */}
                           <span className={`text-sm font-medium ${isCD ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                            {fmt(produit.prix_achat_wag_ht)} \u20ac
+                            {fmt(produit.prix_achat_wag_ht)} €
                           </span>
 
                           {/* PMC */}
                           <div>
                             <span className="text-[11px]" style={{ color: produit.pmc_fournisseur ? '#16a34a' : '#9ca3af' }}>
-                              {produit.pmc_fournisseur ? `${fmt(produit.pmc_fournisseur)} \u20ac fourn.` : '\u2014 fourn.'}
+                              {produit.pmc_fournisseur ? `${fmt(produit.pmc_fournisseur)} € fourn.` : '— fourn.'}
                             </span>
                             <div className="flex items-center gap-1 mt-0.5">
                               <input
@@ -326,12 +326,12 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                               {r.ratio.toFixed(0)}%
                             </span>
                           ) : (
-                            <span className="text-gray-400 text-xs">\u2014</span>
+                            <span className="text-gray-400 text-xs">—</span>
                           )}
 
                           {/* DDM */}
                           <div>
-                            <span className="text-xs text-gray-700">{mounted ? formaterDate(produit.dluo) : '\u2014'}</span>
+                            <span className="text-xs text-gray-700">{mounted ? formaterDate(produit.dluo) : '—'}</span>
                             {mounted && jours !== null && (
                               <span className={`block text-[10px] font-medium ${jours < 30 ? 'text-red-600' : jours < 60 ? 'text-amber-600' : 'text-green-600'}`}>
                                 {jours}j
@@ -347,27 +347,27 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
 
                             {(r.scenario === 'A' || r.scenario === 'B') && (
                               <p className="text-[10px] text-gray-500">
-                                PA \u00d7{r.multiplicateur!.toFixed(2)} \u2192 {fmt(r.pv!)} \u20ac{' '}
+                                PA \u00d7{r.multiplicateur!.toFixed(2)} → {fmt(r.pv!)} €{' '}
                                 <span style={{ color: r.scenario === 'A' ? '#16a34a' : '#2563eb' }}>+{r.marge!.toFixed(1)}%</span>
                               </p>
                             )}
 
                             {r.scenario === 'C' && (
                               <div>
-                                <p className="text-[10px] text-gray-500">Cible : {fmt(r.cible!)} \u20ac</p>
+                                <p className="text-[10px] text-gray-500">Cible : {fmt(r.cible!)} €</p>
                                 <button
                                   disabled={confirmingNego[produit.id]}
                                   onClick={() => handleConfirmerNego(produit)}
                                   className="text-[11px] font-medium mt-0.5 disabled:opacity-50"
                                   style={{ color: '#d97706' }}
                                 >
-                                  {confirmingNego[produit.id] ? '\u2026' : '\u2713 Confirmer n\u00e9go'}
+                                  {confirmingNego[produit.id] ? '\u2026' : '\u2713 Confirmer négo'}
                                 </button>
                               </div>
                             )}
 
                             {r.scenario === 'D' && (
-                              <p className="text-[10px] text-gray-500">PA &gt; PMC \u00B7 gap &gt;50%</p>
+                              <p className="text-[10px] text-gray-500">PA &gt; PMC · gap &gt;50%</p>
                             )}
 
                             {r.scenario === 'PMC_REQUIS' && (
@@ -378,7 +378,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                   inputPmcRefs.current[produit.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
                                 }}
                               >
-                                Saisir PMC \u2192
+                                Saisir PMC →
                               </button>
                             )}
                           </div>
@@ -403,7 +403,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
             <div className="absolute inset-0 bg-black/40" />
             <div className="relative bg-white rounded-xl shadow-2xl max-w-[640px] w-full max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">Email n\u00e9go \u2014 {modalGroupe}</h2>
+                <h2 className="text-lg font-bold text-gray-900">Email négo — {modalGroupe}</h2>
                 <button onClick={() => setModalGroupe(null)} className="text-gray-400 hover:text-gray-600 text-xl">\u00d7</button>
               </div>
               <pre className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-4 whitespace-pre-wrap mb-4">{texte}</pre>
@@ -412,7 +412,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                 className="text-sm font-medium text-white px-4 py-2 rounded-lg"
                 style={{ background: '#16a34a' }}
               >
-                {copiedId === 'modal-email' ? '\u2713 Copi\u00e9 !' : '\uD83D\uDCCB Copier'}
+                {copiedId === 'modal-email' ? '\u2713 Copié !' : '\uD83D\uDCCB Copier'}
               </button>
             </div>
           </div>
