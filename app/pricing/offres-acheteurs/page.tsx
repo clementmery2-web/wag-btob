@@ -10,7 +10,8 @@ export default async function Page() {
       produits (
         nom,
         stock_disponible,
-        prix_vente_wag_ht
+        prix_vente_wag_ht,
+        prix_achat_wag_ht
       )
     `)
     .eq('statut', 'en_attente')
