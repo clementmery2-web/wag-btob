@@ -129,6 +129,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [modalTab, setModalTab] = useState<0 | 1 | 2>(0)
   const [flashRow, setFlashRow] = useState<string | null>(null)
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
 
   const inputPmcRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -370,12 +371,12 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                           const isCD = r.scenario === 'C' || r.scenario === 'D'
 
                           return (
-                            <tr key={produit.id} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleur}`, background: flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#FFF5F5' : 'white', transition: 'background 0.3s' }}>
+                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleur}`, background: flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#FFF5F5' : 'white', transition: 'background 0.3s' }}>
                               {/* PRODUIT EAN */}
                               <td style={{ padding: '10px 12px' }}>
                                 <div style={{ fontWeight: 600, fontSize: '14px' }}>{produit.nom}</div>
                                 {produit.ean && <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>{produit.ean}</div>}
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px', visibility: hoveredRow === produit.id ? 'visible' : 'hidden', height: '18px' }}>
                                   {produit.ean && <button onClick={() => handleCopy(produit.ean!, produit.id + '-ean')} style={{ fontSize: '11px', color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{copiedId === produit.id + '-ean' ? '✓ Copié !' : '📋 EAN'}</button>}
                                   <button onClick={() => handleCopy(produit.nom, produit.id + '-nom')} style={{ fontSize: '11px', color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{copiedId === produit.id + '-nom' ? '✓ Copié !' : '📋 nom'}</button>
                                 </div>
@@ -401,7 +402,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                     onBlur={() => handlePmcBlur(produit)}
                                     onFocus={e => e.target.select()}
                                     disabled={savingPmc[produit.id]}
-                                    style={{ width: '78px', padding: '4px 8px', fontSize: '13px', border: '1px solid #D1D5DB', borderRadius: '6px', opacity: savingPmc[produit.id] ? 0.5 : 1 }} />
+                                    style={{ width: '95px', padding: '4px 8px', fontSize: '13px', border: '1px solid #D1D5DB', borderRadius: '6px', opacity: savingPmc[produit.id] ? 0.5 : 1 }} />
                                   {savingPmc[produit.id] && <span style={{ fontSize: '11px', color: '#9CA3AF' }}>…</span>}
                                   {savedPmc[produit.id] && <span style={{ fontSize: '11px', color: '#16a34a' }}>✓</span>}
                                   {produit.pmc_fournisseur != null && !savingPmc[produit.id] && !savedPmc[produit.id] && <span title="PMC fourni par le fournisseur" style={{ fontSize: '11px' }}>🔗</span>}
@@ -455,10 +456,9 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                 )}
                                 {r.scenario === 'D' && <div style={{ fontSize: '12px', color: '#9CA3AF' }}>PA &gt; PMC · gap &gt;50%</div>}
                                 {r.scenario === 'PMC_REQUIS' && (
-                                  <button className="text-[11px] text-indigo-600 font-medium mt-1" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                                    onClick={() => { inputPmcRefs.current[produit.id]?.focus(); inputPmcRefs.current[produit.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}>
-                                    Saisir PMC →
-                                  </button>
+                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: '#fef3c7', color: '#d97706', fontSize: '12px', fontWeight: 600 }}>
+                                    PMC requis
+                                  </span>
                                 )}
                               </td>
                             </tr>
