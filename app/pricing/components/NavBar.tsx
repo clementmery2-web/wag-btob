@@ -102,14 +102,10 @@ export default function NavBar({
           <Link href="/pricing/validation-pricing" style={linkStyle('/pricing/validation-pricing')} onMouseEnter={hover('/pricing/validation-pricing')} onMouseLeave={unhover}>
             Validation pricing<Badge count={nbProduitsValider} variant="green" />
           </Link>
-          <a href="/" target="_blank" rel="noopener noreferrer" style={linkStyle('/__ext')} onMouseEnter={hover('/__ext')} onMouseLeave={unhover}>
+          <Link href="/pricing/produits-en-ligne" style={linkStyle('/pricing/produits-en-ligne')} onMouseEnter={hover('/pricing/produits-en-ligne')} onMouseLeave={unhover}>
             Produits en ligne
             <Badge count={nbProduitsLigne} variant="green" />
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.4, flexShrink: 0 }}>
-              <path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M10 2h4v4M14 2L8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </a>
+          </Link>
           <Link href="/pricing/offres-acheteurs" style={linkStyle('/pricing/offres-acheteurs')} onMouseEnter={hover('/pricing/offres-acheteurs')} onMouseLeave={unhover}>
             Offres acheteurs<Badge count={nbOffresAcheteurs} variant="red" />
           </Link>
