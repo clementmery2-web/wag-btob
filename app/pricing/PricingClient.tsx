@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Produit, GroupeFournisseur } from './types'
 import { calculerScenarioResult, formaterDate, calculerJoursDDM, formaterPrixEuro, validerPrix } from './pricingUtils'
@@ -120,6 +121,7 @@ interface PricingClientProps {
 }
 
 export default function PricingClient({ initialProduits, assigneParFournisseur = {}, offreIdParFournisseur = {} }: PricingClientProps) {
+  const router = useRouter()
   const [produits, setProduits] = useState<Produit[]>(initialProduits)
   const [pmcEdits, setPmcEdits] = useState<Record<string, number | null>>({})
   const [assignesLocaux, setAssignesLocaux] = useState<Record<string, string>>({})
@@ -266,11 +268,10 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
     try {
       for (const p of produitsAValider) {
         const r = calculerScenarioResult(p, pmcEdits)
-        const { error } = await supabase.from('produits').update({ statut: 'valide', prix_vente_wag_ht: r.pv! }).eq('id', p.id)
+        const { error } = await supabase.from('produits').update({ statut: 'valide', visible_catalogue: true, prix_vente_wag_ht: r.pv! }).eq('id', p.id)
         if (error) throw error
         succeededIds.push(p.id)
       }
-      setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
       if (succeededIds.length > 0) {
         setProduitsFinalises(prev => {
           const next = { ...prev }
@@ -280,7 +281,6 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
       }
     } catch {
       if (succeededIds.length > 0) {
-        setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
         setProduitsFinalises(prev => {
           const next = { ...prev }
           for (const id of succeededIds) next[id] = 'valide'
@@ -310,13 +310,12 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
     setConfirmingOne(prev => ({ ...prev, [produit.id]: true }))
     setRowErrors(prev => ({ ...prev, [produit.id]: '' }))
     try {
-      const { error } = await supabase.from('produits').update({ statut: 'valide', prix_vente_wag_ht: r.pv! }).eq('id', produit.id)
+      const { error } = await supabase.from('produits').update({ statut: 'valide', visible_catalogue: true, prix_vente_wag_ht: r.pv! }).eq('id', produit.id)
       if (error) throw error
       setFlashRow(produit.id)
       const offreId = produit.offre_id
       setTimeout(() => {
         setFlashRow(prev => prev === produit.id ? null : prev)
-        setProduits(prev => prev.filter(p => p.id !== produit.id))
         setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
       }, 350)
       callCheckArchive(offreId ?? null)
@@ -332,7 +331,6 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
     try {
       const { error } = await supabase.from('produits').update({ statut: 'nego_fournisseur' }).eq('id', produit.id)
       if (error) throw error
-      setProduits(prev => prev.filter(p => p.id !== produit.id))
       setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
       callCheckArchive(produit.offre_id ?? null)
     } catch (err) {
@@ -362,6 +360,7 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
       for (const u of updates) delete next[u.id]
       return next
     })
+    router.refresh()
   }
 
   const handleRefuser = async (produitId: string) => {
@@ -533,30 +532,30 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                       <colgroup>
-                        <col style={{ width: '18%' }} />
-                        <col style={{ width: '6%' }} />
-                        <col style={{ width: '6%' }} />
-                        <col style={{ width: '12%' }} />
-                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '20%' }} />
                         <col style={{ width: '8%' }} />
+                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '7%' }} />
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '6%' }} />
                         <col style={{ width: '7%' }} />
                         <col style={{ width: '18%' }} />
-                        <col style={{ width: '19%' }} />
+                        <col style={{ width: '18%' }} />
                       </colgroup>
                       <thead>
                         <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
                           {[
-                            { label: 'PRODUIT EAN' },
-                            { label: <>STOCK<br /><span style={{ fontWeight: 400, fontSize: '10px' }}>(cartons)</span></> },
+                            { label: 'PRODUIT' },
+                            { label: 'DDM' },
+                            { label: 'STOCK' },
                             { label: 'PA WAG HT' },
                             { label: 'PMC FOURN.' },
                             { label: 'PA/PMC', title: 'Ratio = PA WAG ÷ PMC × 100. A<30% | B 30-55% | C>55% négo | D>55%+gap>50% refus', cursor: 'help' },
-                            { label: 'DDM' },
                             { label: 'PV B2B HT' },
                             { label: 'SCÉNARIO' },
                             { label: 'ACTION' },
                           ].map((h, i) => (
-                            <th key={i} style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: '#9CA3AF', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: h.cursor ?? 'default' }} title={h.title}>{h.label}</th>
+                            <th key={i} style={{ padding: '8px 8px', fontSize: '10px', fontWeight: 500, color: '#6B7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: h.cursor ?? 'default' }} title={h.title}>{h.label}</th>
                           ))}
                         </tr>
                       </thead>
@@ -565,25 +564,47 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
                           const badge = SCENARIO_BADGE[r.scenario]
                           const couleurLigne = r.scenario === 'A' ? '#16a34a' : r.scenario === 'B' ? '#2563eb' : (r.scenario === 'C' || r.scenario === 'PMC_REQUIS') ? '#d97706' : '#dc2626'
                           const isCD = r.scenario === 'C' || r.scenario === 'D'
-                          const fondLigne = flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#fef2f2' : index % 2 === 0 ? 'white' : '#F9FAFB'
+                          const estFinalise = !!produitsFinalises[produit.id]
+                          const statutFinal = produitsFinalises[produit.id]
+                          const fondLigne = estFinalise
+                            ? '#f9fafb'
+                            : flashRow === produit.id ? '#dcfce7'
+                            : r.scenario === 'C' ? '#fffbeb'
+                            : r.scenario === 'D' ? '#fef2f2'
+                            : index % 2 === 0 ? 'white' : '#f9fafb'
 
                           return (
-                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleurLigne}`, background: produitsFinalises[produit.id] ? '#f9fafb' : fondLigne, opacity: produitsFinalises[produit.id] ? 0.55 : (r.scenario === 'D' ? 0.82 : 1), transition: 'background 0.3s' }}>
-                              {/* PRODUIT EAN */}
-                              <td style={{ padding: '10px 12px' }}>
-                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{produit.nom}</div>
-                                {produit.ean && <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>{produit.ean}</div>}
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '4px', visibility: hoveredRow === produit.id ? 'visible' : 'hidden', height: '18px' }}>
-                                  {produit.ean && <button onClick={() => handleCopy(produit.ean!, produit.id + '-ean')} style={{ fontSize: '11px', color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{copiedId === produit.id + '-ean' ? '✓ Copié !' : '📋 EAN'}</button>}
-                                  <button onClick={() => handleCopy(produit.nom, produit.id + '-nom')} style={{ fontSize: '11px', color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{copiedId === produit.id + '-nom' ? '✓ Copié !' : '📋 nom'}</button>
+                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderTop: '0.5px solid #e5e7eb', background: fondLigne, opacity: estFinalise ? 0.6 : 1 }}>
+                              {/* TD1 PRODUIT */}
+                              <td style={{ padding: '8px' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 500, color: '#111827', lineHeight: 1.3 }}>{produit.nom}</div>
+                                <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  {produit.ean && <span>{produit.ean}</span>}
+                                  {produit.ean && produit.fournisseur_nom && <span>·</span>}
+                                  {produit.fournisseur_nom && <span>{produit.fournisseur_nom}</span>}
+                                  {estFinalise && (
+                                    <span style={{ padding: '1px 6px', borderRadius: '9999px', fontSize: '10px', fontWeight: 500, background: statutFinal === 'valide' ? '#dcfce7' : '#fee2e2', color: statutFinal === 'valide' ? '#166534' : '#991b1b' }}>
+                                      {statutFinal === 'valide' ? '✓ Validé' : '✗ Refusé'}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
-                              {/* STOCK */}
-                              <td style={{ padding: '10px 8px', fontSize: '13px' }}>{produit.stock_disponible ?? '—'} ctn</td>
-                              {/* PA HT */}
-                              <td style={{ padding: '10px 8px', fontSize: '13px', textDecoration: isCD ? 'line-through' : 'none', color: isCD ? '#9CA3AF' : 'inherit' }}>
-                                {formaterPrixEuro(produit.prix_achat_wag_ht)}
+                              {/* TD2 DDM */}
+                              <td style={{ padding: '8px', fontSize: '12px' }}>
+                                <div>{mounted ? formaterDate(produit.dluo) : '—'}</div>
+                                {mounted && produit.dluo && (() => {
+                                  const j = calculerJoursDDM(produit.dluo)
+                                  if (j === null) return null
+                                  if (j < 0) return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>DDM dépassé</span>
+                                  if (j < 30) return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
+                                  if (j < 60) return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
+                                  return <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '2px' }}>{j}j</div>
+                                })()}
                               </td>
+                              {/* TD3 STOCK */}
+                              <td style={{ padding: '8px', fontSize: '12px' }}>{produit.stock_disponible ?? '—'} ctn</td>
+                              {/* TD4 PA WAG HT */}
+                              <td style={{ padding: '8px', fontSize: '12px' }}>{formaterPrixEuro(produit.prix_achat_wag_ht)}</td>
                               {/* PMC FOURN. */}
                               <td style={{ padding: '10px 8px' }}>
                                 {produit.pmc_fournisseur != null && produit.pmc_fournisseur > 0
@@ -636,24 +657,6 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
                                 {r.ratio != null
                                   ? <span title={`Ratio : ${r.ratio.toFixed(2)}%${r.gap != null ? ` · Gap : ${r.gap.toFixed(2)}%` : ''}`} style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, background: r.scenario === 'D' ? '#fca5a5' : badge.bg, color: r.scenario === 'D' ? '#7f1d1d' : badge.text }}>{r.ratio.toFixed(0)}%</span>
                                   : <span style={{ color: '#9CA3AF', fontSize: '12px' }}>—</span>}
-                              </td>
-                              {/* DDM */}
-                              <td style={{ padding: '10px 8px', fontSize: '13px' }}>
-                                <div>{mounted ? formaterDate(produit.dluo) : '—'}</div>
-                                {mounted && produit.dluo && (() => {
-                                  const j = calculerJoursDDM(produit.dluo)
-                                  if (j === null) return null
-                                  if (j < 0) return (
-                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>DDM dépassé</span>
-                                  )
-                                  if (j < 30) return (
-                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
-                                  )
-                                  if (j < 60) return (
-                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fef3c7', color: '#92400e', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
-                                  )
-                                  return <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '2px' }}>{j}j</div>
-                                })()}
                               </td>
                               {/* PV HT */}
                               <td style={{ padding: '10px 8px', fontSize: '13px' }}>

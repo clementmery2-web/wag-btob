@@ -235,7 +235,7 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
               <span style={{ fontSize: '11px', color: '#86efac', marginLeft: 'auto' }}>13 chiffres ✓</span>
             </div>
 
-            <p style={{ fontSize: '12px', color: '#374151', marginBottom: 12, fontWeight: 500 }}>Quelle colonne est le prix marché consommateur (PMC) ?</p>
+            <p style={{ fontSize: '12px', color: '#374151', marginBottom: 12, fontWeight: 500 }}>Quelle colonne est le PMC WAG (prix marché consommateur de référence) ?</p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
               {allCols.map((col, idx) => {
