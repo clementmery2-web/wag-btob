@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import * as XLSX from 'xlsx';
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
 
 interface ProduitParse {
   ref: string;
@@ -226,10 +220,7 @@ async function handleImport(body: {
   produits: ProduitParse[];
   assigned_to?: string | null;
 }) {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
-  }
+  const supabase = supabaseAdmin;
 
   const { fournisseur_nom, flux, produits, assigned_to } = body;
   if (!produits || produits.length === 0) {
@@ -336,6 +327,7 @@ async function handleImport(body: {
     offre_id: offreId,
   }));
 
+  console.log('[mercuriale] offreId before upsert:', offreId, '| rows[0].offre_id:', rows[0]?.offre_id);
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
 
   // 4. Separate rows with EAN (can upsert) from rows without EAN (must deduplicate by nom)
