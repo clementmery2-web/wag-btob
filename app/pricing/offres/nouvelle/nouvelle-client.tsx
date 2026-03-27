@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatEur } from '../../lib/types';
@@ -62,6 +62,44 @@ export function NouvelleOffreClient() {
 
   // Editing state
   const [editCell, setEditCell] = useState<{ row: number; col: keyof ProduitParse } | null>(null);
+  const [nomFichierAffiche, setNomFichierAffiche] = useState('');
+
+  // ── SessionStorage persistence ──
+  const WIZARD_KEY = 'wag_wizard_state';
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(WIZARD_KEY);
+      if (!saved) return;
+      const data = JSON.parse(saved);
+      if (data.nomFournisseur) setFournisseur(data.nomFournisseur);
+      if (data.assigneA) setAssigneA(data.assigneA);
+      if (data.mapping) setMapping(data.mapping);
+      if (data.produits?.length > 0) setProduits(data.produits);
+      if (data.etape && data.etape !== 'import') setEtape(data.etape);
+      if (data.nomFichier) setNomFichierAffiche(data.nomFichier);
+      if (data.colonnes) setColonnes(data.colonnes);
+    } catch (e) {
+      console.warn('[wizard] sessionStorage restore failed', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (etape === 'upload') return;
+    try {
+      sessionStorage.setItem(WIZARD_KEY, JSON.stringify({
+        nomFichier: fichier?.name ?? nomFichierAffiche ?? '',
+        nomFournisseur: fournisseur,
+        assigneA,
+        mapping,
+        produits,
+        colonnes,
+        etape,
+      }));
+    } catch (e) {
+      console.warn('[wizard] sessionStorage save failed', e);
+    }
+  }, [fournisseur, assigneA, mapping, produits, colonnes, etape, fichier, nomFichierAffiche]);
 
   // ── ÉTAPE 1: Upload & Parse ──
   const handleAnalyse = useCallback(async () => {
@@ -185,6 +223,7 @@ export function NouvelleOffreClient() {
       }
 
       setImportResult(data);
+      sessionStorage.removeItem(WIZARD_KEY);
     } catch {
       setErreur('Erreur réseau. Veuillez réessayer.');
       setEtape('preview');
@@ -277,6 +316,7 @@ export function NouvelleOffreClient() {
                 const file = e.dataTransfer.files[0]
                 if (!file) return
                 setFichier(file)
+                setNomFichierAffiche(file.name)
                 if (!fournisseur) setFournisseur(file.name.replace(/\.[^/.]+$/, ''))
               }}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
@@ -290,6 +330,7 @@ export function NouvelleOffreClient() {
                 onChange={e => {
                   const f = e.target.files?.[0] ?? null
                   setFichier(f)
+                  if (f) setNomFichierAffiche(f.name)
                   if (f && !fournisseur) setFournisseur(f.name.replace(/\.[^/.]+$/, ''))
                 }}
                 className="hidden"
@@ -414,7 +455,7 @@ export function NouvelleOffreClient() {
           {/* Actions */}
           <div className="flex items-center justify-between pt-2">
             <button
-              onClick={() => { setEtape('upload'); setMapping({}); }}
+              onClick={() => { setEtape('upload'); setMapping({}); sessionStorage.removeItem(WIZARD_KEY); }}
               className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               &larr; Recommencer
@@ -463,10 +504,10 @@ export function NouvelleOffreClient() {
                   <thead>
                     <tr style={{ background: '#f9fafb' }}>
                       {[
-                        { label: '#', w: '4%' }, { label: 'Produit', w: '22%' }, { label: 'EAN', w: '12%' },
-                        { label: 'PA WAG HT', w: '10%' }, { label: 'Stock', w: '7%' }, { label: 'PCB', w: '6%' },
-                        { label: 'Valeur PA', w: '11%' }, { label: 'DDM', w: '14%' }, { label: 'PMC fourn.', w: '10%' },
-                        { label: '', w: '4%' },
+                        { label: '#', w: '4%' }, { label: 'Produit', w: '22%' }, { label: 'EAN', w: '13%' },
+                        { label: 'PA WAG HT', w: '9%' }, { label: 'Stock', w: '7%' }, { label: 'PCB', w: '6%' },
+                        { label: 'Valeur PA', w: '10%' }, { label: 'DDM', w: '12%' }, { label: 'PMC fourn.', w: '11%' },
+                        { label: '', w: '6%' },
                       ].map(({ label, w }, idx) => (
                         <th key={idx} style={{ width: w, padding: '8px 6px', textAlign: 'left', fontSize: '10px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</th>
                       ))}
@@ -532,7 +573,7 @@ export function NouvelleOffreClient() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button onClick={() => { setEtape('upload'); setProduits([]); }} style={{ fontSize: '13px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <button onClick={() => { setEtape('upload'); setProduits([]); sessionStorage.removeItem(WIZARD_KEY); }} style={{ fontSize: '13px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}>
                 ← Recommencer
               </button>
               <button onClick={handleImport} disabled={produits.length === 0}
