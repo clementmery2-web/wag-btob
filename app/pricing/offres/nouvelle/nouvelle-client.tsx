@@ -44,6 +44,7 @@ export function NouvelleOffreClient() {
   // Auto-detected from file by Claude
   const [fournisseur, setFournisseur] = useState('');
   const [emailFournisseur, setEmailFournisseur] = useState('');
+  const [assigneA, setAssigneA] = useState('');
 
   // Workflow state
   const [etape, setEtape] = useState<Etape>('upload');
@@ -171,6 +172,7 @@ export function NouvelleOffreClient() {
           fournisseur_nom: fournisseur || fichier?.name?.replace(/\.[^.]+$/, '') || 'Fournisseur inconnu',
           flux,
           produits,
+          assigned_to: assigneA || null,
         }),
       });
 
@@ -322,6 +324,19 @@ export function NouvelleOffreClient() {
             <input type="text" value={fournisseur} onChange={e => setFournisseur(e.target.value)}
               placeholder="Extrait automatiquement ou à saisir manuellement"
               style={{ width: '100%', padding: '8px 12px', fontSize: '13px', border: '0.5px solid #d1d5db', borderRadius: '8px', background: 'white', color: '#111827' }} />
+          </div>
+
+          <div style={{ marginTop: '12px' }}>
+            <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+              Assigné à
+            </label>
+            <select value={assigneA} onChange={e => setAssigneA(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', fontSize: '13px', border: '0.5px solid #d1d5db', borderRadius: '8px', background: 'white', color: '#111827' }}>
+              <option value="">— Non assigné</option>
+              {['Chloé','Juliette','Solène','Clément','Jon','Marc','Eva'].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
           </div>
 
           <button

@@ -222,13 +222,14 @@ async function handleImport(body: {
   fournisseur_nom: string;
   flux: string;
   produits: ProduitParse[];
+  assigned_to?: string | null;
 }) {
   const supabase = getSupabase();
   if (!supabase) {
     return NextResponse.json({ error: 'Supabase non configuré' }, { status: 500 });
   }
 
-  const { fournisseur_nom, flux, produits } = body;
+  const { fournisseur_nom, flux, produits, assigned_to } = body;
   if (!produits || produits.length === 0) {
     return NextResponse.json({ error: 'Aucun produit à importer' }, { status: 400 });
   }
@@ -278,6 +279,7 @@ async function handleImport(body: {
     visible_catalogue: false,
     statut: 'en_attente',
     photo_statut: 'non_trouvee',
+    fournisseur_nom: fournisseur_nom,
     ...(fournisseurId ? { fournisseur_id: fournisseurId } : {}),
   }));
 
@@ -295,6 +297,18 @@ async function handleImport(body: {
 
   const insertedIds = (data || []).map(r => r.id);
   console.log('[mercuriale] Insérés:', insertedIds.length, 'produits');
+
+  // Create produits_offres entry
+  try {
+    await supabase.from('produits_offres').insert({
+      source: fournisseur_nom,
+      statut_traitement: 'nouvelle',
+      nb_references: produits.length,
+      assigned_to: assigned_to || null,
+    });
+  } catch {
+    // Non bloquant
+  }
 
   // Create notification
   try {

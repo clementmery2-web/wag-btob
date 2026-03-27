@@ -113,10 +113,16 @@ function ModalCopyButton({ text }: { text: string }) {
 
 // ─── Component ────────────────────────────────────────────────
 
-export default function PricingClient({ initialProduits }: { initialProduits: Produit[] }) {
+interface PricingClientProps {
+  initialProduits: Produit[]
+  assigneParFournisseur?: Record<string, string | null>
+  offreIdParFournisseur?: Record<string, string>
+}
+
+export default function PricingClient({ initialProduits, assigneParFournisseur = {}, offreIdParFournisseur = {} }: PricingClientProps) {
   const [produits, setProduits] = useState<Produit[]>(initialProduits)
   const [pmcEdits, setPmcEdits] = useState<Record<string, number | null>>({})
-  const [owners, setOwners] = useState<Record<string, string>>({})
+  const [assignesLocaux, setAssignesLocaux] = useState<Record<string, string>>({})
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [validating, setValidating] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -149,21 +155,40 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   // ─── Groupement ─────────────────────────────────────────────
 
   const groupes: GroupeFournisseur[] = useMemo(() => {
-    const map: Record<string, { offreId: string | null; produits: Produit[] }> = {}
+    const map: Record<string, { offreId: string | null; assigneA: string | null; produits: Produit[] }> = {}
     for (const p of produits) {
       const key = p.fournisseur_nom || 'Autre'
-      if (!map[key]) map[key] = { offreId: p.offre_id ?? null, produits: [] }
+      if (!map[key]) map[key] = {
+        offreId: offreIdParFournisseur[key] ?? p.offre_id ?? null,
+        assigneA: assigneParFournisseur[key] ?? null,
+        produits: []
+      }
       map[key].produits.push(p)
     }
     return Object.entries(map)
       .map(([nom, g]): GroupeFournisseur => ({
         nom,
         offreId: g.offreId,
+        assigneA: g.assigneA,
         produits: g.produits,
         dateImport: new Date(Math.max(...g.produits.map(p => new Date(p.created_at).getTime())))
       }))
       .sort((a, b) => b.dateImport.getTime() - a.dateImport.getTime())
-  }, [produits])
+  }, [produits, assigneParFournisseur, offreIdParFournisseur])
+
+  // Open only the last group by default
+  const groupesKey = groupes.map(g => g.nom).join(',')
+  useEffect(() => {
+    if (groupes.length === 0) return
+    setCollapsed(prev => {
+      const dejaInitialise = Object.keys(prev).length > 0
+      if (dejaInitialise) return prev
+      const result: Record<string, boolean> = {}
+      groupes.forEach((g, i) => { result[g.nom] = i !== groupes.length - 1 })
+      return result
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupesKey])
 
   // ─── Handlers ───────────────────────────────────────────────
 
@@ -178,6 +203,13 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   }
 
   const openModal = (nom: string) => { setModalTab(0); setModalGroupe(nom) }
+
+  const handleAssigner = async (nomGroupe: string, offreId: string | null, valeur: string) => {
+    setAssignesLocaux(prev => ({ ...prev, [nomGroupe]: valeur }))
+    if (!offreId) return
+    const { error } = await supabase.from('produits_offres').update({ assigned_to: valeur || null }).eq('id', offreId)
+    if (error) console.error('[handleAssigner]', error.message)
+  }
 
   const handlePmcChange = (produitId: string, raw: string) => {
     const parsed = parseFloat(raw)
@@ -458,8 +490,9 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                 {isCollapsed && (
                   <span className="text-xs text-gray-500">{nbPrets} prêts · {nbPmcManquant} PMC · {nbNego} négo · {nbRefus} refus</span>
                 )}
-                <select value={owners[groupe.nom] ?? ''} onChange={e => setOwners(prev => ({ ...prev, [groupe.nom]: e.target.value }))} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
-                  {OWNERS.map(o => <option key={o} value={o === OWNERS[0] ? '' : o}>{o}</option>)}
+                <select value={assignesLocaux[groupe.nom] ?? groupe.assigneA ?? ''} onChange={e => handleAssigner(groupe.nom, groupe.offreId, e.target.value)} className="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
+                  <option value="">— Assigner</option>
+                  {['Chloé','Juliette','Solène','Clément','Jon','Marc','Eva'].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
                 {nbNego > 0 && (
                   <button onClick={() => openModal(groupe.nom)} className="text-xs font-medium px-3 py-1 rounded-md border" style={{ borderColor: '#d97706', color: '#d97706' }}>

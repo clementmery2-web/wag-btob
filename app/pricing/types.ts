@@ -36,6 +36,7 @@ export interface ScenarioResult {
 export interface GroupeFournisseur {
   nom: string
   offreId: string | null
+  assigneA: string | null
   produits: Produit[]
   dateImport: Date
 }
