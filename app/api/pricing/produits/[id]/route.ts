@@ -36,7 +36,7 @@ export async function PATCH(
 
   // Si pas dans produits, tenter sur produits_offres
   const offreUpdates: Record<string, unknown> = {};
-  if ('statut' in body) offreUpdates.statut = body.statut === 'valide' ? 'traitee' : body.statut;
+  if ('statut' in body) offreUpdates.statut_traitement = body.statut === 'valide' ? 'traitee' : body.statut;
   if ('note_operateur' in body) offreUpdates.note_operateur = body.note_operateur;
   if ('assigne_a' in body) offreUpdates.assigne_a = body.assigne_a;
 
