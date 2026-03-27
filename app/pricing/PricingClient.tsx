@@ -19,7 +19,7 @@ const SCENARIO_BADGE: Record<string, { label: string; bg: string; text: string }
   PMC_REQUIS: { label: 'PMC requis', bg: '#fef3c7', text: '#d97706' },
 }
 
-const OWNERS = ['— Assigner', 'Juliette', 'Lucas', 'Marie']
+const OWNERS = ['— Assigner', 'Chloé', 'Juliette', 'Solène', 'Clément', 'Jon', 'Marc', 'Eva', 'Autre']
 
 // ─── Fonctions pures (hors composant) ─────────────────────────
 
@@ -132,6 +132,8 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   const [flashRow, setFlashRow] = useState<string | null>(null)
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const [showPmcImport, setShowPmcImport] = useState(false)
+  const [pmcDisplay, setPmcDisplay] = useState<Record<string, string>>({})
+  const [produitsFinalises, setProduitsFinalises] = useState<Record<string, 'valide' | 'refuse'>>({})
 
   const inputPmcRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -225,8 +227,22 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
         succeededIds.push(p.id)
       }
       setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
+      if (succeededIds.length > 0) {
+        setProduitsFinalises(prev => {
+          const next = { ...prev }
+          for (const id of succeededIds) next[id] = 'valide'
+          return next
+        })
+      }
     } catch {
-      if (succeededIds.length > 0) setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
+      if (succeededIds.length > 0) {
+        setProduits(prev => prev.filter(p => !succeededIds.includes(p.id)))
+        setProduitsFinalises(prev => {
+          const next = { ...prev }
+          for (const id of succeededIds) next[id] = 'valide'
+          return next
+        })
+      }
       setErrors(prev => ({ ...prev, [groupeNom]: `Erreur (${succeededIds.length}/${produitsAValider.length} validés). Réessayez.` }))
     } finally {
       setValidating(prev => ({ ...prev, [groupeNom]: false }))
@@ -245,6 +261,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       setTimeout(() => {
         setFlashRow(prev => prev === produit.id ? null : prev)
         setProduits(prev => prev.filter(p => p.id !== produit.id))
+        setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
       }, 350)
     } catch {
       setRowErrors(prev => ({ ...prev, [produit.id]: 'Erreur — réessayez' }))
@@ -259,6 +276,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       const { error } = await supabase.from('produits').update({ statut: 'nego_fournisseur' }).eq('id', produit.id)
       if (error) throw error
       setProduits(prev => prev.filter(p => p.id !== produit.id))
+      setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
     } catch (err) {
       console.error('Erreur confirmation négo:', err)
     } finally {
@@ -276,6 +294,24 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       for (const u of updates) delete next[u.id]
       return next
     })
+    setPmcDisplay(prev => {
+      const next = { ...prev }
+      for (const u of updates) delete next[u.id]
+      return next
+    })
+  }
+
+  const handleRefuser = async (produitId: string) => {
+    const { error } = await supabase.from('produits').update({ statut: 'refuse' }).eq('id', produitId)
+    if (error) { console.error('[handleRefuser] error:', error.message); return }
+    setProduitsFinalises(prev => ({ ...prev, [produitId]: 'refuse' }))
+  }
+
+  const handleAnnulerFinalisation = async (produitId: string) => {
+    const { error } = await supabase.from('produits').update({ statut: 'en_attente', prix_vente_wag_ht: null, visible_catalogue: false }).eq('id', produitId)
+    if (error) { console.error('[handleAnnulerFinalisation] error:', error.message); return }
+    setProduitsFinalises(prev => { const n = { ...prev }; delete n[produitId]; return n })
+    setPmcDisplay(prev => { const n = { ...prev }; delete n[produitId]; return n })
   }
 
   const countByScenario = (items: Produit[], ...scenarios: string[]) =>
@@ -407,19 +443,30 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                       <colgroup>
-                        <col style={{ width: '19%' }} />
-                        <col style={{ width: '7%' }} />
-                        <col style={{ width: '7%' }} />
-                        <col style={{ width: '13%' }} />
-                        <col style={{ width: '7%' }} />
-                        <col style={{ width: '9%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '6%' }} />
                         <col style={{ width: '8%' }} />
-                        <col style={{ width: '30%' }} />
+                        <col style={{ width: '7%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '19%' }} />
                       </colgroup>
                       <thead>
                         <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                          {['PRODUIT EAN', <>STOCK<br /><span style={{ fontWeight: 400, fontSize: '10px' }}>(cartons)</span></>, 'PA HT', 'PMC FOURN.', 'PA/PMC', 'DDM', 'PV HT', 'SCÉNARIO'].map((h, i) => (
-                            <th key={i} style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: '#9CA3AF', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                          {[
+                            { label: 'PRODUIT EAN' },
+                            { label: <>STOCK<br /><span style={{ fontWeight: 400, fontSize: '10px' }}>(cartons)</span></> },
+                            { label: 'PA WAG HT' },
+                            { label: 'PMC FOURN.' },
+                            { label: 'PA/PMC', title: 'Ratio = PA WAG ÷ PMC × 100. A<30% | B 30-55% | C>55% négo | D>55%+gap>50% refus', cursor: 'help' },
+                            { label: 'DDM' },
+                            { label: 'PV B2B HT' },
+                            { label: 'SCÉNARIO' },
+                            { label: 'ACTION' },
+                          ].map((h, i) => (
+                            <th key={i} style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: '#9CA3AF', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em', cursor: h.cursor ?? 'default' }} title={h.title}>{h.label}</th>
                           ))}
                         </tr>
                       </thead>
@@ -431,7 +478,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                           const fondLigne = flashRow === produit.id ? '#dcfce7' : r.scenario === 'D' ? '#fef2f2' : index % 2 === 0 ? 'white' : '#F9FAFB'
 
                           return (
-                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleurLigne}`, background: fondLigne, opacity: r.scenario === 'D' ? 0.82 : 1, transition: 'background 0.3s' }}>
+                            <tr key={produit.id} onMouseEnter={() => setHoveredRow(produit.id)} onMouseLeave={() => setHoveredRow(null)} style={{ borderBottom: '1px solid #F3F4F6', borderLeft: `4px solid ${couleurLigne}`, background: produitsFinalises[produit.id] ? '#f9fafb' : fondLigne, opacity: produitsFinalises[produit.id] ? 0.55 : (r.scenario === 'D' ? 0.82 : 1), transition: 'background 0.3s' }}>
                               {/* PRODUIT EAN */}
                               <td style={{ padding: '10px 12px' }}>
                                 <div style={{ fontWeight: 600, fontSize: '14px' }}>{produit.nom}</div>
@@ -455,14 +502,35 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                     ? <div style={{ color: '#9CA3AF', fontSize: '11px', marginBottom: '4px' }}>{produit.pmc_reference.toFixed(2)} € réf.</div>
                                     : <div style={{ color: '#9CA3AF', fontSize: '11px', marginBottom: '4px' }}>— fourn.</div>}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <input type="number" step="0.01" min="0.01" placeholder="Saisir PMC"
-                                    value={produit.id in pmcEdits ? (pmcEdits[produit.id] ?? '') : (produit.pmc_fournisseur ?? produit.pmc_reference ?? '')}
+                                  <input type="text" placeholder="Saisir PMC"
+                                    disabled={!!produitsFinalises[produit.id] || savingPmc[produit.id]}
+                                    value={
+                                      pmcDisplay[produit.id] !== undefined
+                                        ? pmcDisplay[produit.id]
+                                        : pmcEdits[produit.id] != null
+                                          ? `${String(pmcEdits[produit.id]).replace('.', ',')} €`
+                                          : produit.pmc_fournisseur != null
+                                            ? `${String(produit.pmc_fournisseur).replace('.', ',')} €`
+                                            : ''
+                                    }
                                     ref={el => { inputPmcRefs.current[produit.id] = el }}
-                                    onChange={e => handlePmcChange(produit.id, e.target.value)}
-                                    onBlur={() => handlePmcBlur(produit)}
-                                    onFocus={e => e.target.select()}
-                                    disabled={savingPmc[produit.id]}
-                                    style={{ width: '95px', padding: '4px 8px', fontSize: '13px', border: '1px solid #D1D5DB', borderRadius: '6px', opacity: savingPmc[produit.id] ? 0.5 : 1 }} />
+                                    onChange={e => {
+                                      const raw = e.target.value.replace(/\s*€\s*/g, '').replace(',', '.')
+                                      setPmcDisplay(prev => ({ ...prev, [produit.id]: e.target.value }))
+                                      const val = parseFloat(raw)
+                                      if (!isNaN(val)) setPmcEdits(prev => ({ ...prev, [produit.id]: val }))
+                                    }}
+                                    onFocus={() => {
+                                      const raw = pmcEdits[produit.id] ?? produit.pmc_fournisseur
+                                      if (raw != null) setPmcDisplay(prev => ({ ...prev, [produit.id]: String(raw).replace('.', ',') }))
+                                    }}
+                                    onBlur={() => {
+                                      const raw = pmcEdits[produit.id] ?? produit.pmc_fournisseur
+                                      if (raw != null) setPmcDisplay(prev => ({ ...prev, [produit.id]: `${String(raw).replace('.', ',')} €` }))
+                                      else setPmcDisplay(prev => { const n = { ...prev }; delete n[produit.id]; return n })
+                                      handlePmcBlur(produit)
+                                    }}
+                                    style={{ width: '95px', padding: '4px 8px', fontSize: '13px', border: '1px solid #D1D5DB', borderRadius: '6px', opacity: (savingPmc[produit.id] || produitsFinalises[produit.id]) ? 0.5 : 1 }} />
                                   {savingPmc[produit.id] && <span style={{ fontSize: '11px', color: '#9CA3AF' }}>…</span>}
                                   {savedPmc[produit.id] && <span style={{ fontSize: '11px', color: '#16a34a' }}>✓</span>}
                                   {produit.pmc_fournisseur != null && !savingPmc[produit.id] && !savedPmc[produit.id] && <span title="PMC fourni par le fournisseur" style={{ fontSize: '11px' }}>🔗</span>}
@@ -503,29 +571,52 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                   <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: badge.bg, color: badge.text, fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{badge.label}</span>
                                 )}
                                 {(r.scenario === 'A' || r.scenario === 'B') && (
-                                  <>
-                                    <div style={{ fontSize: '12px', color: '#374151' }}>PA × {r.multiplicateur!.toFixed(2)} → {r.pv!.toFixed(2)} € +{r.marge!.toFixed(1)}%</div>
-                                    <button onClick={() => handleValiderUn(produit)} disabled={confirmingOne[produit.id] || savingPmc[produit.id]}
-                                      style={{ marginTop: '4px', fontSize: '11px', padding: '3px 10px', borderRadius: '4px', background: confirmingOne[produit.id] ? '#86efac' : '#16a34a', color: 'white', border: 'none', cursor: confirmingOne[produit.id] ? 'not-allowed' : 'pointer', opacity: savingPmc[produit.id] ? 0.5 : 1 }}>
-                                      {confirmingOne[produit.id] ? '…' : '✓ Valider ce produit'}
-                                    </button>
-                                    {rowErrors[produit.id] && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '2px' }}>{rowErrors[produit.id]}</div>}
-                                  </>
+                                  <div style={{ fontSize: '12px', color: '#374151' }}>PA × {r.multiplicateur!.toFixed(2)} → {r.pv!.toFixed(2)} € +{r.marge!.toFixed(1)}%</div>
                                 )}
                                 {r.scenario === 'C' && (
-                                  <>
-                                    <div style={{ fontSize: '12px', color: '#374151', marginBottom: '4px' }}>Cible : {r.cible!.toFixed(2)} €</div>
-                                    <button onClick={() => handleConfirmerNego(produit)} disabled={confirmingNego[produit.id]}
-                                      style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '4px', background: confirmingNego[produit.id] ? '#fde68a' : '#d97706', color: 'white', border: 'none', cursor: confirmingNego[produit.id] ? 'not-allowed' : 'pointer' }}>
-                                      {confirmingNego[produit.id] ? '…' : '✓ Confirmer négo'}
-                                    </button>
-                                  </>
+                                  <div style={{ fontSize: '12px', color: '#374151' }}>Cible : {r.cible!.toFixed(2)} €</div>
                                 )}
                                 {r.scenario === 'D' && (
                                   <>
                                     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: '#fca5a5', color: '#7f1d1d', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>D — REFUS</span>
                                     <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 500 }}>PA &gt; PMC · gap &gt;50%</div>
                                   </>
+                                )}
+                              </td>
+                              {/* ACTION */}
+                              <td style={{ padding: '8px', verticalAlign: 'middle' }}>
+                                {!produitsFinalises[produit.id] ? (
+                                  <>
+                                    {(r.scenario === 'A' || r.scenario === 'B') && (
+                                      <button onClick={() => handleValiderUn(produit)} disabled={confirmingOne[produit.id] || savingPmc[produit.id]}
+                                        style={{ fontSize: '11px', padding: '4px 10px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                        ✓ Valider
+                                      </button>
+                                    )}
+                                    {r.scenario === 'C' && (
+                                      <button onClick={() => handleConfirmerNego(produit)} disabled={confirmingNego[produit.id]}
+                                        style={{ fontSize: '11px', padding: '4px 10px', background: '#d97706', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                        ✓ Confirmer négo
+                                      </button>
+                                    )}
+                                    {r.scenario === 'D' && (
+                                      <button onClick={() => handleRefuser(produit.id)}
+                                        style={{ fontSize: '11px', padding: '4px 10px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                        ✗ Refuser
+                                      </button>
+                                    )}
+                                    {rowErrors[produit.id] && <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '2px' }}>{rowErrors[produit.id]}</div>}
+                                  </>
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 500, color: produitsFinalises[produit.id] === 'valide' ? '#16a34a' : '#dc2626' }}>
+                                      {produitsFinalises[produit.id] === 'valide' ? '✓ Validé' : '✗ Refusé'}
+                                    </span>
+                                    <button onClick={() => handleAnnulerFinalisation(produit.id)}
+                                      style={{ fontSize: '10px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                                      Annuler
+                                    </button>
+                                  </div>
                                 )}
                               </td>
                             </tr>
