@@ -471,115 +471,218 @@ export function NouvelleOffreClient() {
 
       {/* ═══ ÉTAPE 3: PREVIEW ═══ */}
       {etape === 'preview' && (() => {
+        // Calculs
+        const joursRestants = (ddmStr: string | null): number => {
+          if (!ddmStr) return 9999;
+          try {
+            const dt = new Date(ddmStr);
+            if (isNaN(dt.getTime())) return 9999;
+            return Math.floor((dt.getTime() - Date.now()) / 86400000);
+          } catch { return 9999; }
+        };
+
+        const eanCount: Record<string, number> = {};
+        produits.forEach(p => { if (p.ean) eanCount[p.ean] = (eanCount[p.ean] || 0) + 1; });
+        const isEanDuplique = (ean: string | null | undefined) => !!ean && eanCount[ean] > 1;
+        const eanFirstLine: Record<string, number> = {};
+        produits.forEach((p, i) => { if (p.ean && !(p.ean in eanFirstLine)) eanFirstLine[p.ean] = i + 1; });
+
+        type RowStatus = 'ok' | 'warn' | 'error';
+        const getStatus = (p: ProduitParse): RowStatus => {
+          if (isEanDuplique(p.ean)) return 'error';
+          if (!p.pmc_fournisseur || joursRestants(p.ddm) < 30) return 'warn';
+          return 'ok';
+        };
+
+        const nbPmcManquant = produits.filter(p => !p.pmc_fournisseur).length;
+        const nbEanDouble = produits.filter(p => isEanDuplique(p.ean)).length;
+        const nbAnomalies = produits.filter(p => getStatus(p) !== 'ok').length;
         const stockTotal = produits.reduce((s, p) => s + (p.stock || 0), 0);
-        const valeurTotalePA = produits.reduce((s, p) => s + (p.prix_achat_ht || 0) * (p.stock || 0), 0);
-        const joursJ = (d: string | null) => { if (!d) return null; const dt = new Date(d); return isNaN(dt.getTime()) ? null : Math.round((dt.getTime() - Date.now()) / 86400000); };
+        const valeurTotale = produits.reduce((s, p) => s + (p.prix_achat_ht || 0) * (p.stock || 0), 0);
+
+        // Local filter/search state managed via closure — use produits directly
+        // Note: we can't use useState inside the IIFE, so we render without filter/search for now
+        // and add it as a separate enhancement if needed
+
+        const produitsFiltres = produits;
 
         return (
-          <div style={{ background: 'white', border: '0.5px solid #e5e7eb', borderRadius: '12px', padding: '24px' }}>
+          <div style={{ background: 'var(--color-background-primary, white)', border: '0.5px solid var(--color-border-tertiary, #e5e7eb)', borderRadius: '12px', padding: '24px' }}>
+            {/* Header */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 500, color: '#111827', marginBottom: '4px' }}>Vérification avant import</div>
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>{fournisseur || 'Fournisseur inconnu'}</div>
+              <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--color-text-primary, #111827)', marginBottom: '4px' }}>Vérification avant import</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary, #6b7280)' }}>{fournisseur || 'Fournisseur inconnu'}</div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
+            {/* Bannière anomalies */}
+            {nbAnomalies > 0 && (
+              <div style={{ background: nbEanDouble > 0 ? '#FCEBEB' : '#FAEEDA', border: `0.5px solid ${nbEanDouble > 0 ? '#E24B4A' : '#EF9F27'}`, color: nbEanDouble > 0 ? '#791F1F' : '#633806', borderRadius: '8px', padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
+                ⚠ {nbAnomalies} anomalie{nbAnomalies > 1 ? 's' : ''} détectée{nbAnomalies > 1 ? 's' : ''} —
+                {nbPmcManquant > 0 && ` ${nbPmcManquant} ligne${nbPmcManquant > 1 ? 's' : ''} sans PMC fournisseur`}
+                {nbPmcManquant > 0 && nbEanDouble > 0 && ','}
+                {nbEanDouble > 0 && ` ${nbEanDouble} EAN en double`}.
+                {' '}Vous pouvez importer quand même ou supprimer les lignes concernées.
+              </div>
+            )}
+
+            {/* 5 KPI cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginBottom: 20 }}>
               {[
-                { label: 'Produits détectés', value: String(produits.length), sub: null },
-                { label: 'Stock total', value: Math.round(stockTotal).toLocaleString('fr-FR'), sub: 'cartons' },
-                { label: 'Valeur est. PA', value: `${Math.round(valeurTotalePA).toLocaleString('fr-FR')} €`, sub: 'PA × stock total' },
-              ].map(({ label, value, sub }) => (
-                <div key={label} style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>{label}</div>
-                  <div style={{ fontSize: '24px', fontWeight: 500, color: '#111827' }}>{value}</div>
-                  {sub && <div style={{ fontSize: '11px', color: '#9ca3af' }}>{sub}</div>}
+                { label: 'Produits détectés', value: String(produits.length), sub: 'lignes valides', borderColor: 'transparent', valueColor: 'var(--color-text-primary, #111827)' },
+                { label: 'Stock total', value: Math.round(stockTotal).toLocaleString('fr-FR'), sub: 'cartons', borderColor: 'transparent', valueColor: 'var(--color-text-primary, #111827)' },
+                { label: 'Valeur est. PA', value: Math.round(valeurTotale).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }), sub: 'PA × stock', borderColor: 'transparent', valueColor: 'var(--color-text-primary, #111827)' },
+                { label: 'PMC fourn. manquant', value: String(nbPmcManquant), sub: null, borderColor: nbPmcManquant > 0 ? '#EF9F27' : 'transparent', valueColor: nbPmcManquant > 0 ? '#EF9F27' : 'var(--color-text-tertiary, #9ca3af)' },
+                { label: 'EAN en double', value: String(nbEanDouble), sub: null, borderColor: nbEanDouble > 0 ? '#E24B4A' : 'transparent', valueColor: nbEanDouble > 0 ? '#E24B4A' : 'var(--color-text-tertiary, #9ca3af)' },
+              ].map(({ label, value, sub, borderColor, valueColor }) => (
+                <div key={label} style={{ background: 'var(--color-background-secondary, #f9fafb)', borderRadius: '8px', padding: '12px 14px', border: `0.5px solid ${borderColor}` }}>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary, #9ca3af)', marginBottom: '4px' }}>{label}</div>
+                  <div style={{ fontSize: '22px', fontWeight: 500, color: valueColor }}>{value}</div>
+                  {sub && <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary, #9ca3af)' }}>{sub}</div>}
                 </div>
               ))}
             </div>
 
-            <div style={{ border: '0.5px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+            {/* Card tableau */}
+            <div style={{ border: '0.5px solid var(--color-border-tertiary, #e5e7eb)', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+              {/* Table header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '0.5px solid var(--color-border-tertiary, #e5e7eb)' }}>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--color-text-primary, #111827)' }}>Produits à importer</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #6b7280)' }}>Cliquez × pour exclure une ligne</div>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 500, background: '#EEEDFE', color: '#3C3489', padding: '3px 10px', borderRadius: 20 }}>
+                  {fournisseur || '—'}
+                </span>
+              </div>
+
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', minWidth: '700px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', minWidth: '900px' }}>
+                  <colgroup>
+                    <col style={{ width: '28px' }} />
+                    <col style={{ width: '220px' }} />
+                    <col style={{ width: '120px' }} />
+                    <col style={{ width: '85px' }} />
+                    <col style={{ width: '65px' }} />
+                    <col style={{ width: '45px' }} />
+                    <col style={{ width: '85px' }} />
+                    <col style={{ width: '100px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '28px' }} />
+                  </colgroup>
                   <thead>
-                    <tr style={{ background: '#f9fafb' }}>
-                      {[
-                        { label: '#', w: '4%' }, { label: 'Produit', w: '22%' }, { label: 'EAN', w: '13%' },
-                        { label: 'PA WAG HT', w: '9%' }, { label: 'Stock', w: '7%' }, { label: 'PCB', w: '6%' },
-                        { label: 'Valeur PA', w: '10%' }, { label: 'DDM', w: '12%' }, { label: 'PMC fourn.', w: '11%' },
-                        { label: '', w: '6%' },
-                      ].map(({ label, w }, idx) => (
-                        <th key={idx} style={{ width: w, padding: '8px 6px', textAlign: 'left', fontSize: '10px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</th>
+                    <tr style={{ background: 'var(--color-background-secondary, #f9fafb)' }}>
+                      {['#', 'Produit', 'EAN', 'PA WAG HT', 'Stock', 'PCB', 'Valeur PA', 'DDM', 'PMC fourn.', ''].map((h, idx) => (
+                        <th key={idx} style={{ padding: '8px 6px', textAlign: idx >= 3 && idx <= 6 ? 'right' : 'left', fontSize: '10px', fontWeight: 500, color: 'var(--color-text-secondary, #6b7280)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {produits.map((p, i) => {
-                      const valeurPA = (p.prix_achat_ht || 0) * (p.stock || 0);
-                      const ddmJ = joursJ(p.ddm);
+                    {produitsFiltres.map((p, i) => {
+                      const status = getStatus(p);
+                      const jours = joursRestants(p.ddm);
+                      const valeurPA = Math.round((p.prix_achat_ht || 0) * (p.stock || 0));
+                      const rowBg = status === 'error' ? 'rgba(252,235,235,0.2)' : status === 'warn' ? 'rgba(250,238,218,0.13)' : undefined;
+
                       return (
-                        <tr key={i} style={{ borderTop: '0.5px solid #f3f4f6', background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
-                          <td style={{ padding: '8px 6px', color: '#9ca3af', fontSize: '10px' }}>{i + 1}</td>
+                        <tr key={i} style={{ borderTop: '0.5px solid var(--color-border-tertiary, #f3f4f6)', background: rowBg }}>
+                          <td style={{ padding: '8px 6px', fontSize: '11px', color: 'var(--color-text-tertiary, #9ca3af)' }}>{i + 1}</td>
+
+                          {/* Produit */}
                           <td style={{ padding: '8px 6px' }}>
-                            <div style={{ fontWeight: 500, color: '#111827', lineHeight: 1.3 }}>{p.nom || '—'}</div>
-                            {p.marque && <div style={{ fontSize: '10px', color: '#9ca3af' }}>{p.marque}</div>}
+                            <div style={{ fontWeight: 500, fontSize: '13px', color: 'var(--color-text-primary, #111827)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nom || '—'}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--color-text-secondary, #6b7280)' }}>{p.marque || fournisseur || ''}</div>
+                            {!p.pmc_fournisseur && <span style={{ fontSize: 10, background: '#FAEEDA', color: '#633806', padding: '1px 6px', borderRadius: 20, display: 'inline-block', marginTop: 2 }}>⚠ PMC manquant</span>}
+                            {jours < 30 && jours >= 0 && jours !== 9999 && <span style={{ fontSize: 10, background: '#FAEEDA', color: '#633806', padding: '1px 6px', borderRadius: 20, display: 'inline-block', marginTop: 2, marginLeft: 2 }}>⚠ DDM {jours}j</span>}
+                            {isEanDuplique(p.ean) && <span style={{ fontSize: 10, background: '#FCEBEB', color: '#791F1F', padding: '1px 6px', borderRadius: 20, display: 'inline-block', marginTop: 2 }}>✕ EAN doublon ligne {eanFirstLine[p.ean!]}</span>}
                           </td>
-                          <td style={{ padding: '8px 6px', fontSize: '11px', color: '#6b7280', fontFamily: 'monospace' }}>{p.ean || '—'}</td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                            <span style={{ fontWeight: 500, color: p.paSuspecte ? '#d97706' : '#111827' }}>
-                              {p.prix_achat_ht ? `${p.prix_achat_ht.toFixed(2).replace('.', ',')} €` : '—'}
+
+                          {/* EAN */}
+                          <td style={{ padding: '8px 6px' }}>
+                            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: isEanDuplique(p.ean) ? '#E24B4A' : 'var(--color-text-secondary, #6b7280)' }}>
+                              {p.ean || <span style={{ color: 'var(--color-text-tertiary, #9ca3af)' }}>—</span>}
                             </span>
-                            {p.paSuspecte && <span title={p.paWarning ?? ''} style={{ cursor: 'help', color: '#d97706', marginLeft: '3px' }}>⚠</span>}
                           </td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right', color: '#111827' }}>{p.stock || '—'}</td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right', color: '#6b7280' }}>{p.pcb || '—'}</td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 500, color: '#111827' }}>
-                            {valeurPA > 0 ? `${Math.round(valeurPA).toLocaleString('fr-FR')} €` : '—'}
+
+                          {/* PA WAG HT */}
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {p.prix_achat_ht ? (
+                              <span style={{ fontWeight: 500, color: p.paSuspecte ? '#d97706' : 'var(--color-text-primary, #111827)' }}>
+                                {p.prix_achat_ht.toFixed(2)} €
+                                {p.paSuspecte && <span title={p.paWarning ?? ''} style={{ cursor: 'help', color: '#d97706', marginLeft: '2px' }}>⚠</span>}
+                              </span>
+                            ) : <span style={{ color: 'var(--color-text-tertiary, #9ca3af)' }}>—</span>}
                           </td>
+
+                          {/* Stock */}
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary, #111827)' }}>{p.stock || '—'}</td>
+
+                          {/* PCB */}
+                          <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--color-text-secondary, #6b7280)' }}>{p.pcb || '—'}</td>
+
+                          {/* Valeur PA */}
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary, #111827)' }}>
+                            {valeurPA > 0 ? `${valeurPA.toLocaleString('fr-FR')} €` : '—'}
+                          </td>
+
+                          {/* DDM */}
                           <td style={{ padding: '8px 6px' }}>
                             {p.ddm ? (
                               <>
-                                <div style={{ color: '#111827' }}>{new Date(p.ddm).toLocaleDateString('fr-FR')}</div>
-                                {ddmJ !== null && (
-                                  <span style={{
-                                    display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', fontSize: '10px', fontWeight: 500,
-                                    background: ddmJ < 0 ? '#fee2e2' : ddmJ < 30 ? '#fef3c7' : 'transparent',
-                                    color: ddmJ < 0 ? '#991b1b' : ddmJ < 30 ? '#92400e' : '#16a34a',
-                                  }}>
-                                    {ddmJ < 0 ? 'Dépassé' : `${ddmJ}j`}
-                                  </span>
-                                )}
+                                <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary, #111827)' }}>
+                                  {(() => { try { const d = new Date(p.ddm); return isNaN(d.getTime()) ? p.ddm : d.toLocaleDateString('fr-FR'); } catch { return p.ddm; } })()}
+                                </div>
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, display: 'inline-block', marginTop: 2, background: jours > 90 ? '#EAF3DE' : jours >= 30 ? '#FAEEDA' : jours >= 0 ? '#FCEBEB' : '#FCEBEB', color: jours > 90 ? '#27500A' : jours >= 30 ? '#633806' : '#791F1F' }}>
+                                  {jours >= 0 && jours !== 9999 ? `${jours}j` : jours < 0 ? 'expiré' : '—'}
+                                </span>
                               </>
-                            ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                            ) : <span style={{ color: 'var(--color-text-tertiary, #9ca3af)', fontSize: 12 }}>—</span>}
                           </td>
-                          <td style={{ padding: '8px 6px', color: p.pmc_fournisseur ? '#111827' : '#9ca3af' }}>
-                            {p.pmc_fournisseur ? `${p.pmc_fournisseur.toFixed(2).replace('.', ',')} €` : '—'}
+
+                          {/* PMC fourn. */}
+                          <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                            {p.pmc_fournisseur != null && p.pmc_fournisseur > 0
+                              ? <span style={{ fontWeight: 500, color: '#185FA5' }}>{p.pmc_fournisseur.toFixed(2)} €</span>
+                              : <span style={{ fontSize: 12, background: '#FAEEDA', color: '#B85000', padding: '1px 7px', borderRadius: 20 }}>— manquant</span>
+                            }
                           </td>
-                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
-                            <button onClick={() => removeProduit(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '14px' }}>×</button>
+
+                          {/* Supprimer */}
+                          <td style={{ padding: '8px 4px', textAlign: 'center' }}>
+                            <button onClick={() => removeProduit(i)} style={{ color: 'var(--color-text-tertiary, #9ca3af)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
                           </td>
                         </tr>
                       );
                     })}
-                    <tr style={{ borderTop: '0.5px solid #d1d5db', background: '#f9fafb' }}>
-                      <td colSpan={6} style={{ padding: '8px 6px', textAlign: 'right', fontSize: '11px', color: '#9ca3af' }}>Total</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right', fontSize: '12px', fontWeight: 500, color: '#111827' }}>{Math.round(valeurTotalePA).toLocaleString('fr-FR')} €</td>
+
+                    {/* Ligne total */}
+                    <tr style={{ background: 'var(--color-background-secondary, #f9fafb)', borderTop: '0.5px solid var(--color-border-secondary, #d1d5db)' }}>
+                      <td colSpan={6} style={{ textAlign: 'right', fontSize: 11, color: 'var(--color-text-secondary, #6b7280)', fontWeight: 500, padding: '10px 10px' }}>Total</td>
+                      <td style={{ textAlign: 'right', fontWeight: 500, fontSize: 13, fontVariantNumeric: 'tabular-nums', padding: '10px 10px', color: 'var(--color-text-primary, #111827)' }}>
+                        {produits.reduce((s, p) => s + Math.round((p.prix_achat_ht || 0) * (p.stock || 0)), 0).toLocaleString('fr-FR')} €
+                      </td>
                       <td colSpan={3} />
                     </tr>
                   </tbody>
                 </table>
               </div>
+
               {produits.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af', fontSize: '13px' }}>Aucun produit détecté</div>
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-tertiary, #9ca3af)', fontSize: '13px' }}>Aucun produit détecté</div>
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button onClick={() => { setEtape('upload'); setProduits([]); sessionStorage.removeItem(WIZARD_KEY); }} style={{ fontSize: '13px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}>
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 4 }}>
+              <button onClick={() => { setEtape('upload'); setProduits([]); sessionStorage.removeItem(WIZARD_KEY); }} style={{ fontSize: '13px', color: 'var(--color-text-secondary, #6b7280)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 ← Recommencer
               </button>
-              <button onClick={handleImport} disabled={produits.length === 0}
-                style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: produits.length === 0 ? '#e5e7eb' : '#4f46e5', color: 'white', fontSize: '13px', fontWeight: 500, cursor: produits.length === 0 ? 'not-allowed' : 'pointer' }}>
-                Importer {produits.length} produit{produits.length > 1 ? 's' : ''} →
-              </button>
+              <div style={{ textAlign: 'right' }}>
+                <button onClick={handleImport} disabled={produits.length === 0}
+                  style={{ background: produits.length === 0 ? '#e5e7eb' : '#533AB7', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: 14, fontWeight: 500, cursor: produits.length === 0 ? 'not-allowed' : 'pointer' }}>
+                  Importer {produits.length} produit{produits.length > 1 ? 's' : ''} →
+                </button>
+                {nbAnomalies > 0 && <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #6b7280)', marginTop: 4 }}>{nbAnomalies} anomalie{nbAnomalies > 1 ? 's' : ''} · import possible</div>}
+              </div>
             </div>
           </div>
         );
