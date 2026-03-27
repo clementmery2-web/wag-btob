@@ -44,7 +44,6 @@ export function OffresClient() {
   const [source, setSource] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [filtrStatut, setFiltrStatut] = useState<string>('tous');
-  const [filtrUrgence, setFiltrUrgence] = useState<string>('tous');
   const [noteModal, setNoteModal] = useState<string | null>(null);
   const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -120,7 +119,6 @@ export function OffresClient() {
 
   const filtered = offres.filter(o => {
     if (filtrStatut !== 'tous' && o.statut !== filtrStatut) return false;
-    if (filtrUrgence !== 'tous' && o.priorite !== filtrUrgence) return false;
     return true;
   }).sort((a, b) => b.score_urgence - a.score_urgence);
 
@@ -158,16 +156,6 @@ export function OffresClient() {
           <option value="en_cours">En cours</option>
           <option value="traitee">Traitée</option>
           <option value="envoyee">Envoyée</option>
-        </select>
-        <select
-          value={filtrUrgence}
-          onChange={e => setFiltrUrgence(e.target.value)}
-          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
-        >
-          <option value="tous">Toutes les urgences</option>
-          <option value="rouge">🔴 Traiter aujourd&apos;hui</option>
-          <option value="orange">🟠 Cette semaine</option>
-          <option value="vert">🟢 Pas urgent</option>
         </select>
         <span className="text-sm text-gray-500">{filtered.length} offre{filtered.length > 1 ? 's' : ''}</span>
       </div>
