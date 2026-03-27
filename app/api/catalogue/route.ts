@@ -126,7 +126,8 @@ function mapSupabaseToCatalogue(row: any): CatalogueProduit {
     ean: row.ean ?? null,
     categorie: row.categorie ?? '',
     contenance: row.contenance ?? '',
-    prix_wag_ht: safeFloat(row.prix_vente_wag_ht) || safeFloat(row.prix_wag_ht) || 0,
+    prix_wag_ht: safeFloat(row.prix_vente_wag_ht)
+      || safeFloat(row.prix_revente_conseille_ttc) / 1.055,
     prix_gd_ht: safeFloat(row.pmc_reference) || safeFloat(row.pmc_fournisseur) || 0,
     remise_pct: safeFloat(row.remise_vs_gd) || 0,
     marge_retail_estimee: safeFloat(row.marge_retail_estimee) || 0,
@@ -155,7 +156,9 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('produits')
       .select('*')
-      .or('statut.eq.valide,visible_catalogue.eq.true')
+      .eq('statut', 'valide')
+      .eq('visible_catalogue', true)
+      .not('prix_vente_wag_ht', 'is', null)
       .order('created_at', { ascending: false })
       .limit(500);
 
@@ -183,8 +186,9 @@ export async function GET(req: NextRequest) {
     const mapped = (data ?? []).map(r => {
       try {
         const m = mapSupabaseToCatalogue(r);
-        const prixVente = safeFloat(r.prix_vente_wag_ht) || safeFloat(r.prix_wag_ht) || 0;
-        return { ...m, plancher_ht: prixVente, created_at: r.created_at };
+        const plancher = safeFloat(r.prix_vente_wag_ht)
+          || safeFloat(r.prix_revente_conseille_ttc) / 1.055;
+        return { ...m, plancher_ht: plancher, created_at: r.created_at };
       } catch (e) {
         console.error('[catalogue] Erreur mapping produit:', r.id, e);
         return null;
