@@ -44,6 +44,7 @@ export function OffresClient() {
   const [source, setSource] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [filtrStatut, setFiltrStatut] = useState<string>('tous');
+  const [filtreAssigne, setFiltreAssigne] = useState<string>('');
   const [noteModal, setNoteModal] = useState<string | null>(null);
   const [assignDropdown, setAssignDropdown] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -119,6 +120,10 @@ export function OffresClient() {
 
   const filtered = offres.filter(o => {
     if (filtrStatut !== 'tous' && o.statut !== filtrStatut) return false;
+    if (filtreAssigne) {
+      if (filtreAssigne === '__non_assigne') { if (o.assigne_a) return false; }
+      else { if (o.assigne_a !== filtreAssigne) return false; }
+    }
     return true;
   }).sort((a, b) => b.score_urgence - a.score_urgence);
 
@@ -156,6 +161,17 @@ export function OffresClient() {
           <option value="en_cours">En cours</option>
           <option value="traitee">Traitée</option>
           <option value="envoyee">Envoyée</option>
+        </select>
+        <select
+          value={filtreAssigne}
+          onChange={e => setFiltreAssigne(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700"
+        >
+          <option value="">Tous les assignés</option>
+          {['Chloé','Juliette','Solène','Clément','Jon','Marc','Eva'].map(n => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+          <option value="__non_assigne">Non assigné</option>
         </select>
         <span className="text-sm text-gray-500">{filtered.length} offre{filtered.length > 1 ? 's' : ''}</span>
       </div>
