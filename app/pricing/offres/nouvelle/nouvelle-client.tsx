@@ -263,9 +263,9 @@ export function NouvelleOffreClient() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Link href="/pricing/offres" className="text-sm text-gray-500 hover:text-indigo-600 transition-colors">
+            <button onClick={() => setEtape('upload')} className="text-sm text-gray-500 hover:text-indigo-600 transition-colors" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               &larr; Offres
-            </Link>
+            </button>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Nouvelle mercuriale</h1>
           <p className="text-sm text-gray-500 mt-1">Importez un fichier Excel fournisseur pour créer une offre</p>
