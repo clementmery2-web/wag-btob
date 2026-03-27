@@ -331,39 +331,70 @@ async function handleImport(body: {
 
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
 
-  // 4. Deduplicate by EAN — skip products already in DB for this offre
-  let rowsToInsert = rows;
-  if (offreId) {
-    const eansToCheck = rows.map(r => r.ean).filter((e): e is string => !!e);
-    if (eansToCheck.length > 0) {
-      const { data: existing } = await supabase
+  // 4. Separate rows with EAN (can upsert) from rows without EAN (must deduplicate by nom)
+  const rowsWithEan = rows.filter(r => !!r.ean);
+  const rowsWithoutEan = rows.filter(r => !r.ean);
+
+  const insertedIds: string[] = [];
+
+  // 4a. Upsert rows with EAN — constraint produits_ean_offre_unique handles duplicates
+  if (rowsWithEan.length > 0) {
+    const { data: upserted, error: upsertErr } = await supabase
+      .from('produits')
+      .upsert(rowsWithEan, { onConflict: 'ean,offre_id', ignoreDuplicates: true })
+      .select('id');
+    if (upsertErr) {
+      console.error('[mercuriale] Upsert error:', upsertErr.message);
+      // Fallback: try plain insert if constraint doesn't exist yet
+      const { data: fallback, error: fallbackErr } = await supabase
         .from('produits')
-        .select('ean')
-        .eq('offre_id', offreId)
-        .in('ean', eansToCheck);
-      const existingEans = new Set((existing ?? []).map(e => e.ean));
-      if (existingEans.size > 0) {
-        rowsToInsert = rows.filter(r => !r.ean || !existingEans.has(r.ean));
-        console.log('[mercuriale] Dedup: skipped', rows.length - rowsToInsert.length, 'doublons EAN');
+        .insert(rowsWithEan)
+        .select('id');
+      if (fallbackErr) {
+        console.error('[mercuriale] Fallback insert error:', fallbackErr.message);
+        return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
       }
+      insertedIds.push(...(fallback ?? []).map(r => r.id));
+    } else {
+      insertedIds.push(...(upserted ?? []).map(r => r.id));
     }
   }
 
-  if (rowsToInsert.length === 0) {
+  // 4b. Rows without EAN — deduplicate by (nom, offre_id) before inserting
+  if (rowsWithoutEan.length > 0 && offreId) {
+    const nomsToCheck = rowsWithoutEan.map(r => r.nom).filter(Boolean);
+    const { data: existingNoms } = await supabase
+      .from('produits')
+      .select('nom')
+      .eq('offre_id', offreId)
+      .in('nom', nomsToCheck);
+    const existingSet = new Set((existingNoms ?? []).map(e => e.nom));
+    const newRows = rowsWithoutEan.filter(r => !existingSet.has(r.nom));
+    if (newRows.length > 0) {
+      const { data: inserted, error: insertErr } = await supabase
+        .from('produits')
+        .insert(newRows)
+        .select('id');
+      if (insertErr) {
+        console.error('[mercuriale] Insert no-EAN error:', insertErr.message);
+      } else {
+        insertedIds.push(...(inserted ?? []).map(r => r.id));
+      }
+    }
+  } else if (rowsWithoutEan.length > 0) {
+    const { data: inserted, error: insertErr } = await supabase
+      .from('produits')
+      .insert(rowsWithoutEan)
+      .select('id');
+    if (!insertErr) {
+      insertedIds.push(...(inserted ?? []).map(r => r.id));
+    }
+  }
+
+  if (insertedIds.length === 0 && rows.length > 0) {
     return NextResponse.json({ success: true, nb_importes: 0, fournisseur_nom, offre_id: offreId });
   }
 
-  const { data, error } = await supabase
-    .from('produits')
-    .insert(rowsToInsert)
-    .select('id');
-
-  if (error) {
-    console.error('[mercuriale] Erreur INSERT:', error.message, error.code, error.details);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const insertedIds = (data || []).map(r => r.id);
   console.log('[mercuriale] Insérés:', insertedIds.length, 'produits');
 
   // Create notification
