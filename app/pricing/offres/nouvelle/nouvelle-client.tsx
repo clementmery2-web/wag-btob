@@ -147,8 +147,6 @@ export function NouvelleOffreClient() {
 
   // ── ÉTAPE 2.5: Confirm mapping & re-parse ──
   const handleConfirmMapping = useCallback(async () => {
-    if (!fichier) return;
-
     // Build clean mapping (only fields with a selected column)
     const cleanMapping: Record<string, number> = {};
     for (const [k, v] of Object.entries(mapping)) {
@@ -157,6 +155,17 @@ export function NouvelleOffreClient() {
 
     if (cleanMapping.nom === undefined || cleanMapping.prix === undefined) {
       setErreur('Les champs "Nom produit" et "Prix achat WAG HT" sont obligatoires.');
+      return;
+    }
+
+    // If produits already exist (restored from sessionStorage), skip API call
+    if (!fichier && produits.length > 0) {
+      setEtape('preview');
+      return;
+    }
+
+    if (!fichier) {
+      setErreur('Fichier requis — veuillez re-sélectionner le fichier.');
       return;
     }
 
