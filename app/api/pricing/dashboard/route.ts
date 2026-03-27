@@ -16,7 +16,7 @@ export async function GET() {
     supabaseAdmin
       .from('produits_offres')
       .select('*', { count: 'exact', head: true })
-      .in('statut', ['nouvelle', 'en_cours']),
+      .in('statut_traitement', ['nouvelle', 'en_cours']),
     supabaseAdmin
       .from('produits')
       .select('*', { count: 'exact', head: true })
@@ -63,7 +63,7 @@ export async function GET() {
   // ── Activité récente (depuis produits_offres) ──
   const activite = (activiteRecente ?? []).map(o => ({
     id: o.id,
-    type: o.statut === 'nouvelle' ? 'offre_recue' : 'traitement',
+    type: o.statut_traitement === 'nouvelle' ? 'offre_recue' : 'traitement',
     description: `Offre ${o.source ?? o.fournisseur_nom ?? 'Fournisseur sans nom'} — ${o.nb_references ?? '-'} référence(s)`,
     created_at: o.created_at,
   }));

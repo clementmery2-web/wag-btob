@@ -13,7 +13,7 @@ export default async function PricingLayout({ children }: { children: React.Reac
     supabaseAdmin.from('produits').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
     supabaseAdmin.from('produits').select('*', { count: 'exact', head: true }).eq('statut', 'valide'),
     supabaseAdmin.from('offres_acheteurs').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
-    supabaseAdmin.from('produits_offres').select('*', { count: 'exact', head: true }).in('statut', ['nouvelle', 'en_cours']),
+    supabaseAdmin.from('produits_offres').select('*', { count: 'exact', head: true }).in('statut_traitement', ['nouvelle', 'en_cours']),
   ])
 
   return (

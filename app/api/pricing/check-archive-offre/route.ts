@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     // Archive the offre itself
     const { error: err2 } = await supabaseAdmin
       .from('produits_offres')
-      .update({ statut: 'archivée', archived_at: new Date().toISOString() })
+      .update({ statut_traitement: 'archivée', archived_at: new Date().toISOString() })
       .eq('id', offreId)
 
     if (err2) {

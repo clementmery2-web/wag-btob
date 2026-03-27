@@ -24,7 +24,7 @@ type Etape = 'upload' | 'analyse' | 'mapping' | 'preview' | 'import';
 
 const MAPPING_FIELDS = [
   { key: 'nom', label: 'Nom produit', required: true },
-  { key: 'prix', label: 'Prix achat WAG HT', required: true },
+  { key: 'prix', label: 'PA WAG HT', required: true },
   { key: 'ean', label: 'EAN', required: false },
   { key: 'stock', label: 'Stock', required: false },
   { key: 'ddm', label: 'DDM / DLUO', required: false },
@@ -266,22 +266,16 @@ export function NouvelleOffreClient() {
       {etape === 'upload' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5 max-w-2xl">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Flux par défaut</label>
-            <select
-              value={flux}
-              onChange={e => setFlux(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-            >
-              <option value="dropshipping">Dropshipping</option>
-              <option value="stock_wag">Stock WAG (entrepôt)</option>
-              <option value="transit">Transit</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Fichier mercuriale</label>
             <div
               onClick={() => fileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+              onDrop={(e) => {
+                e.preventDefault(); e.stopPropagation()
+                const file = e.dataTransfer.files[0]
+                if (!file) return
+                setFichier(file)
+              }}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                 fichier ? 'border-indigo-300 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
               }`}
@@ -314,7 +308,15 @@ export function NouvelleOffreClient() {
                 </div>
               )}
             </div>
-            <p className="text-xs text-gray-400 mt-2">Le nom du fournisseur et l&apos;email sont extraits automatiquement du fichier.</p>
+          </div>
+
+          <div style={{ marginTop: '12px' }}>
+            <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+              Nom du fournisseur
+            </label>
+            <input type="text" value={fournisseur} onChange={e => setFournisseur(e.target.value)}
+              placeholder="Extrait automatiquement ou à saisir manuellement"
+              style={{ width: '100%', padding: '8px 12px', fontSize: '13px', border: '0.5px solid #d1d5db', borderRadius: '8px', background: 'white', color: '#111827' }} />
           </div>
 
           <button
@@ -420,7 +422,7 @@ export function NouvelleOffreClient() {
             <div className="w-px h-10 bg-gray-200" />
             <div>
               <p className="text-2xl font-bold text-gray-900">{nbTotal}</p>
-              <p className="text-xs text-gray-500">lignes dans le fichier</p>
+              <p className="text-xs text-gray-500">lignes dans le fichier (dont {produits.length} produit{produits.length > 1 ? 's' : ''})</p>
             </div>
             <div className="w-px h-10 bg-gray-200" />
             <div>
@@ -585,7 +587,7 @@ export function NouvelleOffreClient() {
           <div>
             <p className="text-xl font-bold text-gray-900">{importResult.nb_importes} produits importés !</p>
             <p className="text-sm text-gray-500 mt-1">Fournisseur : {importResult.fournisseur_nom}</p>
-            <p className="text-xs text-gray-400 mt-1">Les produits sont en statut &laquo; à traiter &raquo; — passez-les en mode swipe.</p>
+            <p className="text-xs text-gray-400 mt-1">Les produits sont maintenant disponibles dans Validation pricing.</p>
           </div>
           <div className="flex items-center justify-center gap-3 pt-2">
             <Link
@@ -595,10 +597,10 @@ export function NouvelleOffreClient() {
               Voir les offres
             </Link>
             <button
-              onClick={() => router.push('/pricing/offres')}
+              onClick={() => router.push('/pricing/validation-pricing')}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
             >
-              Traiter les produits &rarr;
+              Voir dans Validation pricing &rarr;
             </button>
           </div>
         </div>

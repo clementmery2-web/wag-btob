@@ -5,7 +5,7 @@ export default async function HistoriquePage() {
   const { data: offres } = await supabaseAdmin
     .from('produits_offres')
     .select('*')
-    .eq('statut', 'archivée')
+    .eq('statut_traitement', 'archivée')
     .order('created_at', { ascending: false })
 
   // Fetch archived products separately (no FK join needed)

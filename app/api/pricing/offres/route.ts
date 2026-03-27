@@ -12,11 +12,11 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from('produits_offres')
     .select('*')
-    .neq('statut', 'archivée')
+    .neq('statut_traitement', 'archivée')
     .order('created_at', { ascending: false });
 
   if (statut) {
-    query = query.eq('statut', statut);
+    query = query.eq('statut_traitement', statut);
   }
 
   const { data, error } = await query;
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       nb_produits: o.nb_references ?? '-',
       ddm_min: o.ddm_min ?? new Date().toISOString(),
       valeur_estimee: valeur,
-      statut: o.statut ?? 'nouvelle',
+      statut: o.statut_traitement ?? 'nouvelle',
       assigne_a: o.assigne_a ?? null,
       note_interne: o.note_operateur ?? '',
       score_urgence: Math.round(score),

@@ -204,6 +204,16 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
         setPmcEdits(prev => { const next = { ...prev }; delete next[produit.id]; return next })
         setSavedPmc(prev => ({ ...prev, [produit.id]: true }))
         setTimeout(() => setSavedPmc(prev => ({ ...prev, [produit.id]: false })), 1500)
+        // Mark offre as en_cours (fire-and-forget)
+        const offre_id = produit.offre_id
+        if (offre_id) {
+          supabase
+            .from('produits_offres')
+            .update({ statut_traitement: 'en_cours' })
+            .eq('id', offre_id)
+            .eq('statut_traitement', 'nouvelle')
+            .then(({ error: e }) => { if (e) console.error('[en_cours]', e.message) })
+        }
       }
     } finally {
       setSavingPmc(prev => ({ ...prev, [produit.id]: false }))
