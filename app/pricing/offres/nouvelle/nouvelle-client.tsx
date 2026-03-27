@@ -429,7 +429,7 @@ export function NouvelleOffreClient() {
                   {required && <span className="text-red-500 text-xs">*</span>}
                 </label>
                 <select
-                  value={mapping[key] ?? ''}
+                  value={String(mapping[key] ?? '')}
                   onChange={e => setMapping(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
                   className={`flex-1 px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-100 ${
                     required && (mapping[key] === '' || mapping[key] === undefined)
