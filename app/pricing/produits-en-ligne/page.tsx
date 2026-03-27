@@ -8,7 +8,7 @@ interface ProduitEnLigne {
   stock_disponible?: number | null
   prix_vente_wag_ht?: number | null
   fournisseur_nom?: string | null
-  pcb?: number | null
+  qmc?: number | null
 }
 
 const formatDate = (d?: string | null): string => {
@@ -21,7 +21,7 @@ async function getProduitsEnLigne(): Promise<{ produits: ProduitEnLigne[]; error
   try {
     const { data, error } = await supabaseAdmin
       .from('produits')
-      .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, pcb')
+      .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, qmc')
       .eq('statut', 'valide')
       .eq('visible_catalogue', true)
       .not('prix_vente_wag_ht', 'is', null)
@@ -94,7 +94,7 @@ export default async function ProduitsEnLignePage() {
                     {p.prix_vente_wag_ht != null ? `${Number(p.prix_vente_wag_ht).toFixed(2)} €` : '—'}
                   </td>
                   <td style={{ padding: '10px 8px', color: '#6b7280' }}>
-                    {p.pcb ?? '—'}
+                    {p.qmc ?? '—'}
                   </td>
                   <td style={{ padding: '10px 8px', color: '#6b7280' }}>
                     {p.fournisseur_nom ?? '—'}
