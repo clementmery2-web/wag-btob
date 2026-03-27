@@ -1,16 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { AuthGuard } from '../components/auth-guard'
 
-interface ProduitEnLigne {
-  id: string
-  nom: string
-  dluo?: string | null
-  stock_disponible?: number | null
-  prix_vente_wag_ht?: number | null
-  fournisseur_nom?: string | null
-  pcb?: number | null
-  qmc?: number | null
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ProduitEnLigne = Record<string, any>
 
 const formatDate = (d?: string | null): string => {
   if (!d) return '—'
@@ -22,11 +14,13 @@ async function getProduitsEnLigne(): Promise<ProduitEnLigne[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('produits')
-      .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, pcb, qmc')
+      .select('*')
       .eq('statut', 'valide')
       .eq('visible_catalogue', true)
       .not('prix_vente_wag_ht', 'is', null)
       .order('dluo', { ascending: true })
+
+    console.log('[produits-en-ligne] count:', data?.length, 'error:', error?.message)
 
     if (error) {
       console.error('[produits-en-ligne] Supabase error:', error.message)
