@@ -20,6 +20,7 @@ interface ProduitParse {
   ddm: string | null;
   tva: number;
   poids: number | null;
+  pmc_fournisseur?: number | null;
 }
 
 // Map Excel column headers to known fields via keyword matching
@@ -173,6 +174,7 @@ async function handleParse(req: NextRequest) {
           ddm: ddmRaw || null,
           tva: [5.5, 20].includes(tvaRaw) ? tvaRaw : 5.5,
           poids: colMap.poids !== undefined ? Number(row[colMap.poids]) || null : null,
+          pmc_fournisseur: colMap.pmc_ht !== undefined ? parseFloat(String(row[colMap.pmc_ht] ?? 0).replace(',', '.')) || null : null,
         });
       }
     }
@@ -322,6 +324,7 @@ async function handleImport(body: {
     statut: 'en_attente',
     photo_statut: 'non_trouvee',
     fournisseur_nom: fournisseur_nom,
+    ...(p.pmc_fournisseur ? { pmc_fournisseur: p.pmc_fournisseur } : {}),
     ...(fournisseurId ? { fournisseur_id: fournisseurId } : {}),
     ...(offreId ? { offre_id: offreId } : {}),
   }));

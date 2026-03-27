@@ -16,6 +16,7 @@ interface ProduitParse {
   ddm: string | null;
   tva: number;
   poids: number | null;
+  pmc_fournisseur?: number | null;
   paSuspecte?: boolean;
   paWarning?: string | null;
 }
@@ -552,7 +553,9 @@ export function NouvelleOffreClient() {
                               </>
                             ) : <span style={{ color: '#9ca3af' }}>—</span>}
                           </td>
-                          <td style={{ padding: '8px 6px', color: '#9ca3af' }}>—</td>
+                          <td style={{ padding: '8px 6px', color: p.pmc_fournisseur ? '#111827' : '#9ca3af' }}>
+                            {p.pmc_fournisseur ? `${p.pmc_fournisseur.toFixed(2).replace('.', ',')} €` : '—'}
+                          </td>
                           <td style={{ padding: '8px 6px', textAlign: 'center' }}>
                             <button onClick={() => removeProduit(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '14px' }}>×</button>
                           </td>
