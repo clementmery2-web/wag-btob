@@ -3,6 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatEur } from '../../lib/types';
+import { validerPrix } from '../../pricingUtils';
 
 interface ProduitParse {
   ref: string;
@@ -15,6 +16,8 @@ interface ProduitParse {
   ddm: string | null;
   tva: number;
   poids: number | null;
+  paSuspecte?: boolean;
+  paWarning?: string | null;
 }
 
 type Etape = 'upload' | 'analyse' | 'mapping' | 'preview' | 'import';
@@ -194,7 +197,14 @@ export function NouvelleOffreClient() {
       if (i !== index) return p;
       const numCols: (keyof ProduitParse)[] = ['prix_achat_ht', 'pcb', 'stock', 'tva', 'poids'];
       if (numCols.includes(col)) {
-        return { ...p, [col]: parseFloat(value) || 0 };
+        const numVal = parseFloat(value) || 0;
+        const updated = { ...p, [col]: numVal };
+        if (col === 'prix_achat_ht' && numVal > 0) {
+          const v = validerPrix(numVal, 'PA');
+          updated.paSuspecte = !v.valide;
+          updated.paWarning = v.warning;
+        }
+        return updated;
       }
       return { ...p, [col]: value };
     }));
@@ -492,7 +502,7 @@ export function NouvelleOffreClient() {
                         onStartEdit={() => setEditCell({ row: i, col: 'prix_achat_ht' })}
                         onSave={v => { updateProduit(i, 'prix_achat_ht', v); setEditCell(null); }}
                         onCancel={() => setEditCell(null)}
-                        render={() => formatEur(p.prix_achat_ht)}
+                        render={() => `${formatEur(p.prix_achat_ht)}${p.paSuspecte ? ' ⚠' : ''}`}
                         align="right"
                       />
                       <EditableCell

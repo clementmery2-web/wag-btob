@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { calculerScenarioResult } from './pricingUtils'
+import { calculerScenarioResult, validerPrix } from './pricingUtils'
 import type { Produit, ScenarioResult } from './types'
 
 const supabase = createBrowserClient(
@@ -17,6 +17,8 @@ interface MatchRow {
   produitNom: string
   pmcActuel: number | null
   scenarioApres: ScenarioResult
+  pmcSuspecte: boolean
+  pmcWarning: string | null
 }
 
 type Step = 'upload' | 'mapping' | 'preview'
@@ -145,7 +147,8 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
       for (const p of matchedProduits) {
         const fakeEdits: Record<string, number | null> = { [p.id]: pmc }
         const scenarioApres = calculerScenarioResult(p, fakeEdits)
-        matchRows.push({ ean: eanRaw, pmc, produitId: p.id, produitNom: p.nom, pmcActuel: p.pmc_fournisseur, scenarioApres })
+        const { valide, warning } = validerPrix(pmc, 'PMC')
+        matchRows.push({ ean: eanRaw, pmc, produitId: p.id, produitNom: p.nom, pmcActuel: p.pmc_fournisseur, scenarioApres, pmcSuspecte: !valide, pmcWarning: warning })
       }
     }
     setMatches(matchRows)
@@ -271,6 +274,12 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
               <button onClick={() => setStep('mapping')} style={{ fontSize: '11px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', marginLeft: 'auto', textDecoration: 'underline' }}>Changer de colonne</button>
             </div>
 
+            {matches.some(r => r.pmcSuspecte) && (
+              <div style={{ background: '#fef3c7', border: '0.5px solid #fcd34d', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '12px', color: '#92400e' }}>
+                ⚠ {matches.filter(r => r.pmcSuspecte).length} valeur(s) PMC inhabituelle(s) détectée(s) — vérifiez le séparateur décimal de votre fichier (point ou virgule)
+              </div>
+            )}
+
             <div style={{ border: '0.5px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', marginBottom: 16 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed' }}>
                 <thead>
@@ -288,7 +297,10 @@ export default function PmcImportModal({ produits, onClose, onImported }: Props)
                       <tr key={row.produitId} style={{ borderTop: '0.5px solid #f3f4f6', background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
                         <td style={{ padding: '7px 10px', color: '#374151' }}>{row.produitNom}</td>
                         <td style={{ padding: '7px 10px', color: '#9ca3af' }}>{row.pmcActuel ? `${row.pmcActuel.toFixed(2)} €` : '—'}</td>
-                        <td style={{ padding: '7px 10px', color: '#16a34a', fontWeight: 500 }}>{row.pmc.toFixed(2)} €</td>
+                        <td style={{ padding: '7px 10px', color: row.pmcSuspecte ? '#d97706' : '#16a34a', fontWeight: 500 }}>
+                          {row.pmc.toFixed(2)} €
+                          {row.pmcSuspecte && <span title={row.pmcWarning ?? ''} style={{ cursor: 'help', marginLeft: '4px', fontSize: '12px' }}>⚠</span>}
+                        </td>
                         <td style={{ padding: '7px 10px' }}>
                           <span style={{ background: badge.bg, color: badge.color, fontSize: '10px', fontWeight: 500, padding: '2px 6px', borderRadius: '9999px' }}>{badge.label}</span>
                         </td>

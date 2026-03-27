@@ -64,3 +64,44 @@ export function calculerJoursDDM(dluo: string | null): number | null {
   expiration.setHours(0, 0, 0, 0)
   return Math.round((expiration.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
+
+// Plages raisonnables pour les prix WAG
+export const PRIX_LIMITES = {
+  PA_MIN: 0.10,
+  PA_MAX: 500,
+  PMC_MIN: 0.30,
+  PMC_MAX: 50,
+  PV_MIN: 0.10,
+  PV_MAX: 300,
+}
+
+export const formaterPrixEuro = (val: number | null | undefined): string => {
+  if (val == null) return '—'
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(val)
+}
+
+export const validerPrix = (
+  val: number,
+  type: 'PA' | 'PMC' | 'PV'
+): { valide: boolean; warning: string | null } => {
+  const limites = {
+    PA:  { min: PRIX_LIMITES.PA_MIN,  max: PRIX_LIMITES.PA_MAX },
+    PMC: { min: PRIX_LIMITES.PMC_MIN, max: PRIX_LIMITES.PMC_MAX },
+    PV:  { min: PRIX_LIMITES.PV_MIN,  max: PRIX_LIMITES.PV_MAX },
+  }
+  const { min, max } = limites[type]
+  if (val < min) return {
+    valide: false,
+    warning: `Valeur trop basse (${formaterPrixEuro(val)}) — minimum attendu ${formaterPrixEuro(min)}`
+  }
+  if (val > max) return {
+    valide: false,
+    warning: `Valeur inhabituelle (${formaterPrixEuro(val)}) — vérifier le séparateur décimal`
+  }
+  return { valide: true, warning: null }
+}

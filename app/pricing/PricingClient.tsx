@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Produit, GroupeFournisseur } from './types'
-import { calculerScenarioResult, formaterDate, calculerJoursDDM } from './pricingUtils'
+import { calculerScenarioResult, formaterDate, calculerJoursDDM, formaterPrixEuro, validerPrix } from './pricingUtils'
 import PmcImportModal from './PmcImportModal'
 
 const supabase = createBrowserClient(
@@ -134,6 +134,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   const [showPmcImport, setShowPmcImport] = useState(false)
   const [pmcDisplay, setPmcDisplay] = useState<Record<string, string>>({})
   const [produitsFinalises, setProduitsFinalises] = useState<Record<string, 'valide' | 'refuse'>>({})
+  const [pmcWarnings, setPmcWarnings] = useState<Record<string, string | null>>({})
 
   const inputPmcRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -252,6 +253,15 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   const handleValiderUn = async (produit: Produit) => {
     const r = calculerScenarioResult(produit, pmcEdits)
     if (r.scenario !== 'A' && r.scenario !== 'B') return
+    if (r.pv != null) {
+      const { valide, warning } = validerPrix(r.pv, 'PV')
+      if (!valide) {
+        const confirmer = window.confirm(
+          `Prix de vente calculé inhabituel : ${formaterPrixEuro(r.pv)}\n${warning}\n\nVoulez-vous quand même valider ce produit ?`
+        )
+        if (!confirmer) return
+      }
+    }
     setConfirmingOne(prev => ({ ...prev, [produit.id]: true }))
     setRowErrors(prev => ({ ...prev, [produit.id]: '' }))
     try {
@@ -295,6 +305,11 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       return next
     })
     setPmcDisplay(prev => {
+      const next = { ...prev }
+      for (const u of updates) delete next[u.id]
+      return next
+    })
+    setPmcWarnings(prev => {
       const next = { ...prev }
       for (const u of updates) delete next[u.id]
       return next
@@ -492,7 +507,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                               <td style={{ padding: '10px 8px', fontSize: '13px' }}>{produit.stock_disponible ?? '—'} ctn</td>
                               {/* PA HT */}
                               <td style={{ padding: '10px 8px', fontSize: '13px', textDecoration: isCD ? 'line-through' : 'none', color: isCD ? '#9CA3AF' : 'inherit' }}>
-                                {produit.prix_achat_wag_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                                {formaterPrixEuro(produit.prix_achat_wag_ht)}
                               </td>
                               {/* PMC FOURN. */}
                               <td style={{ padding: '10px 8px' }}>
@@ -518,7 +533,11 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                       const raw = e.target.value.replace(/\s*€\s*/g, '').replace(',', '.')
                                       setPmcDisplay(prev => ({ ...prev, [produit.id]: e.target.value }))
                                       const val = parseFloat(raw)
-                                      if (!isNaN(val)) setPmcEdits(prev => ({ ...prev, [produit.id]: val }))
+                                      if (!isNaN(val)) {
+                                        const { warning } = validerPrix(val, 'PMC')
+                                        setPmcWarnings(prev => ({ ...prev, [produit.id]: warning }))
+                                        setPmcEdits(prev => ({ ...prev, [produit.id]: val }))
+                                      }
                                     }}
                                     onFocus={() => {
                                       const raw = pmcEdits[produit.id] ?? produit.pmc_fournisseur
@@ -530,7 +549,8 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                       else setPmcDisplay(prev => { const n = { ...prev }; delete n[produit.id]; return n })
                                       handlePmcBlur(produit)
                                     }}
-                                    style={{ width: '95px', padding: '4px 8px', fontSize: '13px', border: '1px solid #D1D5DB', borderRadius: '6px', opacity: (savingPmc[produit.id] || produitsFinalises[produit.id]) ? 0.5 : 1 }} />
+                                    style={{ width: '95px', padding: '4px 8px', fontSize: '13px', border: pmcWarnings[produit.id] ? '1px solid #fcd34d' : '1px solid #D1D5DB', borderRadius: '6px', opacity: (savingPmc[produit.id] || produitsFinalises[produit.id]) ? 0.5 : 1 }} />
+                                  {pmcWarnings[produit.id] && <span title={pmcWarnings[produit.id] ?? ''} style={{ cursor: 'help', fontSize: '14px', color: '#d97706', flexShrink: 0 }}>⚠</span>}
                                   {savingPmc[produit.id] && <span style={{ fontSize: '11px', color: '#9CA3AF' }}>…</span>}
                                   {savedPmc[produit.id] && <span style={{ fontSize: '11px', color: '#16a34a' }}>✓</span>}
                                   {produit.pmc_fournisseur != null && !savingPmc[produit.id] && !savedPmc[produit.id] && <span title="PMC fourni par le fournisseur" style={{ fontSize: '11px' }}>🔗</span>}
@@ -560,9 +580,11 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                               {/* PV HT */}
                               <td style={{ padding: '10px 8px', fontSize: '13px' }}>
                                 {(r.scenario === 'A' || r.scenario === 'B')
-                                  ? <span style={{ color: '#16a34a', fontWeight: 700 }}>{r.pv!.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                                  ? <span style={{ color: '#16a34a', fontWeight: 700 }}>{formaterPrixEuro(r.pv)}</span>
                                   : r.scenario === 'C'
-                                    ? <span style={{ color: '#d97706', fontStyle: 'italic' }}>~{r.cible!.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                                    ? r.cible != null && r.cible < 0
+                                      ? <span style={{ fontSize: '11px', color: '#9ca3af' }}>N/A — PA &gt; PMC</span>
+                                      : <span style={{ color: '#d97706', fontStyle: 'italic' }}>~{formaterPrixEuro(r.cible)}</span>
                                     : <span style={{ color: '#9CA3AF' }}>—</span>}
                               </td>
                               {/* SCÉNARIO */}
