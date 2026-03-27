@@ -261,6 +261,17 @@ async function handleImport(body: {
   // 1. Create produits_offres entry FIRST to get offre_id
   let offreId: string | null = null;
   let offreCreatedAt: string | null = null;
+
+  // Calculate valeur_estimee and ddm_min for the offre
+  const valeurEstimee = produits.reduce((s, p) => s + (p.prix_achat_ht || 0) * (p.stock || 0), 0);
+  const ddmDates = produits
+    .map(p => p.ddm ? new Date(String(p.ddm)) : null)
+    .filter((d): d is Date => d !== null && !isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+  const ddmMin = ddmDates.length > 0 ? ddmDates[0].toISOString().slice(0, 10) : null;
+
+  console.log('[mercuriale] Creating produits_offres with:', { source: fournisseur_nom, nb_references: produits.length, valeur_estimee: Math.round(valeurEstimee), ddm_min: ddmMin, assigned_to });
+
   try {
     const { data: offreData, error: offreErr } = await supabase
       .from('produits_offres')
@@ -268,22 +279,29 @@ async function handleImport(body: {
         source: fournisseur_nom,
         statut_traitement: 'nouvelle',
         nb_references: produits.length,
+        valeur_estimee: Math.round(valeurEstimee) || null,
+        ddm_min: ddmMin,
         assigned_to: assigned_to || null,
       })
       .select('id, created_at')
       .single();
+
+    console.log('[mercuriale] produits_offres INSERT result:', { offreData, offreErr: offreErr?.message ?? null });
+
     if (offreErr) {
-      console.error('[mercuriale] produits_offres insert error:', offreErr.message);
+      console.error('[mercuriale] produits_offres insert error:', offreErr.message, offreErr.code, offreErr.details);
       return NextResponse.json({ error: `Erreur création offre: ${offreErr.message}` }, { status: 500 });
     }
     offreId = offreData?.id ?? null;
     offreCreatedAt = offreData?.created_at ?? null;
+    console.log('[mercuriale] offreId after INSERT:', offreId);
   } catch (e) {
-    console.error('[mercuriale] produits_offres insert failed:', e);
+    console.error('[mercuriale] produits_offres insert EXCEPTION:', e);
     return NextResponse.json({ error: 'Erreur création offre' }, { status: 500 });
   }
 
   if (!offreId) {
+    console.error('[mercuriale] ABORT: offreId is null after successful INSERT — this should not happen');
     return NextResponse.json({ error: 'Impossible de créer l\'offre — offre_id null' }, { status: 500 });
   }
 
@@ -327,8 +345,10 @@ async function handleImport(body: {
     offre_id: offreId,
   }));
 
-  console.log('[mercuriale] offreId before upsert:', offreId, '| rows[0].offre_id:', rows[0]?.offre_id);
-  console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
+  console.log('[mercuriale] offreId before upsert:', offreId, '| typeof:', typeof offreId);
+  console.log('[mercuriale] rows[0].offre_id:', rows[0]?.offre_id, '| typeof:', typeof rows[0]?.offre_id);
+  console.log('[mercuriale] rows with offre_id:', rows.filter(r => r.offre_id).length, '/', rows.length);
+  console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]).slice(0, 500));
 
   // 4. Separate rows with EAN (can upsert) from rows without EAN (must deduplicate by nom)
   const rowsWithEan = rows.filter(r => !!r.ean);
