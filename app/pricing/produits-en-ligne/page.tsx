@@ -1,5 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { AuthGuard } from '../components/auth-guard'
 
 interface ProduitEnLigne {
@@ -21,14 +20,7 @@ const formatDate = (d?: string | null): string => {
 
 async function getProduitsEnLigne(): Promise<ProduitEnLigne[]> {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll() { return cookieStore.getAll() }, setAll() {} } }
-    )
-
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('produits')
       .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, pcb, qmc')
       .eq('statut', 'valide')
