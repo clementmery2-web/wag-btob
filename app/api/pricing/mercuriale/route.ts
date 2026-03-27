@@ -271,7 +271,7 @@ async function handleImport(body: {
   let offreId: string | null = null;
   let offreCreatedAt: string | null = null;
   try {
-    const { data: offreData } = await supabase
+    const { data: offreData, error: offreErr } = await supabase
       .from('produits_offres')
       .insert({
         source: fournisseur_nom,
@@ -281,12 +281,19 @@ async function handleImport(body: {
       })
       .select('id, created_at')
       .single();
-    if (offreData) {
-      offreId = offreData.id;
-      offreCreatedAt = offreData.created_at;
+    if (offreErr) {
+      console.error('[mercuriale] produits_offres insert error:', offreErr.message);
+      return NextResponse.json({ error: `Erreur création offre: ${offreErr.message}` }, { status: 500 });
     }
+    offreId = offreData?.id ?? null;
+    offreCreatedAt = offreData?.created_at ?? null;
   } catch (e) {
-    console.warn('[mercuriale] produits_offres insert failed:', e);
+    console.error('[mercuriale] produits_offres insert failed:', e);
+    return NextResponse.json({ error: 'Erreur création offre' }, { status: 500 });
+  }
+
+  if (!offreId) {
+    return NextResponse.json({ error: 'Impossible de créer l\'offre — offre_id null' }, { status: 500 });
   }
 
   // 2. Deduplicate — remove existing en_attente products for this offre
@@ -326,7 +333,7 @@ async function handleImport(body: {
     fournisseur_nom: fournisseur_nom,
     ...(p.pmc_fournisseur ? { pmc_fournisseur: p.pmc_fournisseur } : {}),
     ...(fournisseurId ? { fournisseur_id: fournisseurId } : {}),
-    ...(offreId ? { offre_id: offreId } : {}),
+    offre_id: offreId,
   }));
 
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
@@ -414,6 +421,6 @@ async function handleImport(body: {
     success: true,
     nb_importes: insertedIds.length,
     fournisseur_nom,
-    offre_id: fournisseur_nom, // Used as redirect param
+    offre_id: offreId,
   });
 }
