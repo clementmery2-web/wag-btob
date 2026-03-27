@@ -275,6 +275,7 @@ export function NouvelleOffreClient() {
                 const file = e.dataTransfer.files[0]
                 if (!file) return
                 setFichier(file)
+                if (!fournisseur) setFournisseur(file.name.replace(/\.[^/.]+$/, ''))
               }}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                 fichier ? 'border-indigo-300 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
@@ -284,7 +285,11 @@ export function NouvelleOffreClient() {
                 ref={fileRef}
                 type="file"
                 accept=".xlsx,.xls,.csv"
-                onChange={e => setFichier(e.target.files?.[0] ?? null)}
+                onChange={e => {
+                  const f = e.target.files?.[0] ?? null
+                  setFichier(f)
+                  if (f && !fournisseur) setFournisseur(f.name.replace(/\.[^/.]+$/, ''))
+                }}
                 className="hidden"
               />
               {fichier ? (
