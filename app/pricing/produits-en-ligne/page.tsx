@@ -14,11 +14,14 @@ async function getProduitsEnLigne(): Promise<ProduitEnLigne[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('produits')
-      .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, pcb, qmc')
+      .select('*')
       .eq('statut', 'valide')
       .eq('visible_catalogue', true)
       .not('prix_vente_wag_ht', 'is', null)
       .order('dluo', { ascending: true })
+
+    if (error) console.error('[produits-en-ligne] error:', JSON.stringify(error))
+    console.log('[produits-en-ligne] count:', data?.length, 'first keys:', Object.keys(data?.[0] ?? {}).filter(k => k.includes('stock') || k.includes('fournisseur') || k.includes('pcb') || k.includes('qmc')).join(', '))
 
     if (error) {
       console.error('[produits-en-ligne] Supabase error:', error.message)
