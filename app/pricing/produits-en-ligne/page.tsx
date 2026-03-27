@@ -1,23 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { AuthGuard } from '../components/auth-guard'
+import ProduitsEnLigneClient from './ProduitsEnLigneClient'
 
-interface ProduitEnLigne {
-  id: string
-  nom: string
-  dluo?: string | null
-  stock_disponible?: number | null
-  prix_vente_wag_ht?: number | null
-  fournisseur_nom?: string | null
-  qmc?: number | null
-}
-
-const formatDate = (d?: string | null): string => {
-  if (!d) return '—'
-  const dt = new Date(d)
-  return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('fr-FR')
-}
-
-async function getProduitsEnLigne(): Promise<{ produits: ProduitEnLigne[]; error: string | null }> {
+async function getProduitsEnLigne() {
   try {
     const { data, error } = await supabaseAdmin
       .from('produits')
@@ -31,7 +16,7 @@ async function getProduitsEnLigne(): Promise<{ produits: ProduitEnLigne[]; error
       console.error('[produits-en-ligne] error:', error.message)
       return { produits: [], error: error.message }
     }
-    return { produits: (data ?? []) as ProduitEnLigne[], error: null }
+    return { produits: data ?? [], error: null }
   } catch (err) {
     console.error('[produits-en-ligne] crash:', err)
     return { produits: [], error: 'Erreur inattendue' }
@@ -67,50 +52,7 @@ export default async function ProduitsEnLignePage() {
           </div>
         )}
 
-        <div style={{ background: 'white', border: '0.5px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
-            <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ width: '30%', padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>Produit</th>
-                <th style={{ width: '10%', padding: '10px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>DDM</th>
-                <th style={{ width: '12%', padding: '10px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>Stock</th>
-                <th style={{ width: '12%', padding: '10px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>Plancher HT</th>
-                <th style={{ width: '10%', padding: '10px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>PCB</th>
-                <th style={{ width: '26%', padding: '10px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>Fournisseur</th>
-              </tr>
-            </thead>
-            <tbody>
-              {produits.map((p, i) => (
-                <tr key={p.id} style={{
-                  borderTop: '0.5px solid #e5e7eb',
-                  background: i % 2 === 0 ? 'white' : '#f9fafb'
-                }}>
-                  <td style={{ padding: '10px 16px', fontWeight: 500, color: '#111827' }}>{p.nom}</td>
-                  <td style={{ padding: '10px 8px', color: '#6b7280' }}>{formatDate(p.dluo)}</td>
-                  <td style={{ padding: '10px 8px', color: '#111827' }}>
-                    {p.stock_disponible != null ? `${p.stock_disponible} ctn` : '—'}
-                  </td>
-                  <td style={{ padding: '10px 8px', fontWeight: 500, color: '#16a34a' }}>
-                    {p.prix_vente_wag_ht != null ? `${Number(p.prix_vente_wag_ht).toFixed(2)} €` : '—'}
-                  </td>
-                  <td style={{ padding: '10px 8px', color: '#6b7280' }}>
-                    {p.qmc ?? '—'}
-                  </td>
-                  <td style={{ padding: '10px 8px', color: '#6b7280' }}>
-                    {p.fournisseur_nom ?? '—'}
-                  </td>
-                </tr>
-              ))}
-              {produits.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
-                    Aucun produit en ligne pour le moment
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ProduitsEnLigneClient produits={produits} />
       </div>
     </AuthGuard>
   )

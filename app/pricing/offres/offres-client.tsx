@@ -88,6 +88,20 @@ export function OffresClient() {
     }).catch(err => console.error('[assigner] PATCH failed:', err));
   }
 
+  const handleArchiverOffre = async (offreId: string) => {
+    if (!window.confirm('Archiver cette offre ? Les produits en attente seront aussi archivés.')) return
+    try {
+      const res = await fetch('/api/pricing/check-archive-offre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offreId, force: true })
+      })
+      if (res.ok) setOffres(prev => prev.filter(o => o.id !== offreId))
+    } catch (err) {
+      console.error('[handleArchiverOffre]', err)
+    }
+  }
+
   useEffect(() => {
     fetch('/api/pricing/offres')
       .then(r => {
@@ -240,6 +254,13 @@ export function OffresClient() {
                         >
                           Traiter
                         </Link>
+                        <button
+                          onClick={() => handleArchiverOffre(offre.id)}
+                          className="text-gray-400 hover:text-red-500 text-xs px-2 py-1 border border-gray-200 rounded-md transition-colors"
+                          title="Archiver cette offre"
+                        >
+                          Archiver
+                        </button>
                         <button
                           onClick={() => setNoteModal(noteModal === offre.id ? null : offre.id)}
                           className="text-gray-400 hover:text-gray-600 p-1"

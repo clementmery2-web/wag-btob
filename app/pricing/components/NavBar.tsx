@@ -122,6 +122,9 @@ export default function NavBar({
         <Link href="/pricing/docs" style={utilLinkStyle('/pricing/docs')} onMouseEnter={hover('/pricing/docs')} onMouseLeave={unhover}>
           Docs
         </Link>
+        <Link href="/pricing/historique" style={utilLinkStyle('/pricing/historique')} onMouseEnter={hover('/pricing/historique')} onMouseLeave={unhover}>
+          Historique
+        </Link>
 
         <Sep />
 

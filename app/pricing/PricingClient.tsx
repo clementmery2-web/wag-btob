@@ -149,17 +149,18 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
   // ─── Groupement ─────────────────────────────────────────────
 
   const groupes: GroupeFournisseur[] = useMemo(() => {
-    const map: Record<string, Produit[]> = {}
+    const map: Record<string, { offreId: string | null; produits: Produit[] }> = {}
     for (const p of produits) {
       const key = p.fournisseur_nom || 'Autre'
-      if (!map[key]) map[key] = []
-      map[key].push(p)
+      if (!map[key]) map[key] = { offreId: p.offre_id ?? null, produits: [] }
+      map[key].produits.push(p)
     }
     return Object.entries(map)
-      .map(([nom, items]): GroupeFournisseur => ({
+      .map(([nom, g]): GroupeFournisseur => ({
         nom,
-        produits: items,
-        dateImport: new Date(Math.max(...items.map(p => new Date(p.created_at).getTime())))
+        offreId: g.offreId,
+        produits: g.produits,
+        dateImport: new Date(Math.max(...g.produits.map(p => new Date(p.created_at).getTime())))
       }))
       .sort((a, b) => b.dateImport.getTime() - a.dateImport.getTime())
   }, [produits])
@@ -247,6 +248,8 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       setErrors(prev => ({ ...prev, [groupeNom]: `Erreur (${succeededIds.length}/${produitsAValider.length} validés). Réessayez.` }))
     } finally {
       setValidating(prev => ({ ...prev, [groupeNom]: false }))
+      const offreId = groupe.offreId
+      if (offreId) callCheckArchive(offreId)
     }
   }
 
@@ -268,11 +271,13 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       const { error } = await supabase.from('produits').update({ statut: 'valide', prix_vente_wag_ht: r.pv! }).eq('id', produit.id)
       if (error) throw error
       setFlashRow(produit.id)
+      const offreId = produit.offre_id
       setTimeout(() => {
         setFlashRow(prev => prev === produit.id ? null : prev)
         setProduits(prev => prev.filter(p => p.id !== produit.id))
         setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
       }, 350)
+      callCheckArchive(offreId ?? null)
     } catch {
       setRowErrors(prev => ({ ...prev, [produit.id]: 'Erreur — réessayez' }))
     } finally {
@@ -287,6 +292,7 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
       if (error) throw error
       setProduits(prev => prev.filter(p => p.id !== produit.id))
       setProduitsFinalises(prev => ({ ...prev, [produit.id]: 'valide' }))
+      callCheckArchive(produit.offre_id ?? null)
     } catch (err) {
       console.error('Erreur confirmation négo:', err)
     } finally {
@@ -320,6 +326,32 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
     const { error } = await supabase.from('produits').update({ statut: 'refuse' }).eq('id', produitId)
     if (error) { console.error('[handleRefuser] error:', error.message); return }
     setProduitsFinalises(prev => ({ ...prev, [produitId]: 'refuse' }))
+    const offreId = produits.find(p => p.id === produitId)?.offre_id
+    await callCheckArchive(offreId ?? null)
+  }
+
+  const callCheckArchive = async (offreId: string | null, force = false) => {
+    if (!offreId) return
+    try {
+      const res = await fetch('/api/pricing/check-archive-offre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offreId, force })
+      })
+      if (!res.ok) console.error('[callCheckArchive] HTTP', res.status)
+    } catch (err) {
+      console.error('[callCheckArchive] Fetch error:', err)
+    }
+  }
+
+  const handleNegoEchouee = async (produitId: string, offreId: string | null) => {
+    const { error } = await supabase.from('produits').update({ statut: 'refuse' }).eq('id', produitId)
+    if (!error) {
+      setProduitsFinalises(prev => ({ ...prev, [produitId]: 'refuse' }))
+      await callCheckArchive(offreId)
+    } else {
+      console.error('[handleNegoEchouee]', error.message)
+    }
   }
 
   const handleAnnulerFinalisation = async (produitId: string) => {
@@ -568,6 +600,9 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                 {mounted && produit.dluo && (() => {
                                   const j = calculerJoursDDM(produit.dluo)
                                   if (j === null) return null
+                                  if (j < 0) return (
+                                    <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>DDM dépassé</span>
+                                  )
                                   if (j < 30) return (
                                     <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', background: '#fee2e2', color: '#991b1b', fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>{j}j</span>
                                   )
@@ -620,10 +655,16 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                       </button>
                                     )}
                                     {r.scenario === 'C' && (
-                                      <button onClick={() => handleConfirmerNego(produit)} disabled={confirmingNego[produit.id]}
-                                        style={{ fontSize: '11px', padding: '4px 10px', background: '#d97706', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
-                                        ✓ Confirmer négo
-                                      </button>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <button onClick={() => handleConfirmerNego(produit)} disabled={confirmingNego[produit.id]}
+                                          style={{ fontSize: '11px', padding: '4px 10px', background: '#d97706', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                                          ✓ Confirmer négo
+                                        </button>
+                                        <button onClick={() => handleNegoEchouee(produit.id, groupe.offreId)}
+                                          style={{ fontSize: '11px', padding: '3px 8px', background: 'none', color: '#dc2626', border: '0.5px solid #fca5a5', borderRadius: '6px', cursor: 'pointer' }}>
+                                          ✗ Négo échouée
+                                        </button>
+                                      </div>
                                     )}
                                     {r.scenario === 'D' && (
                                       <button onClick={() => handleRefuser(produit.id)}

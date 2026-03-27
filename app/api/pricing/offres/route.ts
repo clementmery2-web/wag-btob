@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from('produits_offres')
     .select('*')
+    .neq('statut', 'archivée')
     .order('created_at', { ascending: false });
 
   if (statut) {

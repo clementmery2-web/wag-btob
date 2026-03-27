@@ -1,4 +1,4 @@
-export type Statut = 'en_attente' | 'valide' | 'refuse' | 'nego_fournisseur'
+export type Statut = 'en_attente' | 'valide' | 'refuse' | 'nego_fournisseur' | 'en_nego' | 'archive'
 export type Scenario = 'A' | 'B' | 'C' | 'D' | 'PMC_REQUIS'
 
 export interface Produit {
@@ -18,6 +18,8 @@ export interface Produit {
   statut: Statut
   visible_catalogue: boolean
   created_at: string
+  offre_id: string | null
+  archived_at: string | null
 }
 
 export interface ScenarioResult {
@@ -33,6 +35,7 @@ export interface ScenarioResult {
 
 export interface GroupeFournisseur {
   nom: string
+  offreId: string | null
   produits: Produit[]
   dateImport: Date
 }
