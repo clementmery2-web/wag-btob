@@ -30,7 +30,7 @@ const MAPPING_FIELDS = [
   { key: 'ddm', label: 'DDM / DLUO', required: false },
   { key: 'pcb', label: 'PCB / Colisage', required: false },
   { key: 'marque', label: 'Marque', required: false },
-  { key: 'pmc_ht', label: 'PMC HT', required: false },
+  { key: 'pmc_ht', label: 'PMC fourn.', required: false },
 ] as const;
 
 export function NouvelleOffreClient() {
