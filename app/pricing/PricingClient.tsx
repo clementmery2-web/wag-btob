@@ -30,7 +30,7 @@ function genererEmailFournisseur(
 ): string {
   const lignes = produitsNego.map(p => {
     const r = calculerScenarioResult(p, pmcEdits)
-    const cibleStr = r.cible != null ? r.cible.toFixed(2) + ' € HT' : '?'
+    const cibleStr = r.cible != null && r.cible >= 0 ? r.cible.toFixed(2) + ' € HT' : 'N/A'
     return `• ${p.nom} : votre prix ${p.prix_achat_wag_ht.toFixed(2)} € HT → notre cible ${cibleStr}`
   }).join('\n')
   return [
@@ -81,7 +81,7 @@ function genererResumeInterne(
     const jours = calculerJoursDDM(p.dluo)
     const nom = p.nom.substring(0, 20).padEnd(20)
     const ratio = r.ratio != null ? r.ratio.toFixed(1) + '%' : '—'
-    const cible = r.cible != null ? r.cible.toFixed(2) + ' €' : '—'
+    const cible = r.cible != null && r.cible >= 0 ? r.cible.toFixed(2) + ' €' : '—'
     const gap = r.gap != null ? r.gap.toFixed(1) + '%' : '—'
     const pmc = p.pmc_fournisseur != null ? p.pmc_fournisseur.toFixed(2) : '—'
     const ddm = jours != null ? jours + 'j' : '?'
@@ -596,7 +596,11 @@ export default function PricingClient({ initialProduits }: { initialProduits: Pr
                                   <div style={{ fontSize: '12px', color: '#374151' }}>PA × {r.multiplicateur!.toFixed(2)} → {r.pv!.toFixed(2)} € +{r.marge!.toFixed(1)}%</div>
                                 )}
                                 {r.scenario === 'C' && (
-                                  <div style={{ fontSize: '12px', color: '#374151' }}>Cible : {r.cible!.toFixed(2)} €</div>
+                                  <div style={{ fontSize: '12px', color: '#374151' }}>
+                                    {r.cible != null && r.cible < 0
+                                      ? <span style={{ color: '#9ca3af' }}>N/A — PA &gt; PMC</span>
+                                      : `Cible : ${r.cible != null ? r.cible.toFixed(2) : '—'} €`}
+                                  </div>
                                 )}
                                 {r.scenario === 'D' && (
                                   <>
