@@ -265,7 +265,49 @@ async function handleImport(body: {
     }
   }
 
-  // Build insert rows using only valid produits columns
+  // 1. Create produits_offres entry FIRST to get offre_id
+  let offreId: string | null = null;
+  let offreCreatedAt: string | null = null;
+  try {
+    const { data: offreData } = await supabase
+      .from('produits_offres')
+      .insert({
+        source: fournisseur_nom,
+        statut_traitement: 'nouvelle',
+        nb_references: produits.length,
+        assigned_to: assigned_to || null,
+      })
+      .select('id, created_at')
+      .single();
+    if (offreData) {
+      offreId = offreData.id;
+      offreCreatedAt = offreData.created_at;
+    }
+  } catch (e) {
+    console.warn('[mercuriale] produits_offres insert failed:', e);
+  }
+
+  // 2. Deduplicate — remove existing en_attente products for this offre
+  if (offreId) {
+    const { count } = await supabase
+      .from('produits')
+      .select('*', { count: 'exact', head: true })
+      .eq('offre_id', offreId)
+      .eq('statut', 'en_attente');
+    if ((count ?? 0) > 0) {
+      await supabase.from('produits').delete().eq('offre_id', offreId).eq('statut', 'en_attente');
+    }
+  } else if (offreCreatedAt && fournisseur_nom) {
+    // Fallback: deduplicate by fournisseur_nom + created_at
+    await supabase
+      .from('produits')
+      .delete()
+      .eq('fournisseur_nom', fournisseur_nom)
+      .eq('statut', 'en_attente')
+      .gte('created_at', offreCreatedAt);
+  }
+
+  // 3. Build insert rows
   const rows = produits.map(p => ({
     nom: p.nom,
     marque: p.marque,
@@ -274,13 +316,14 @@ async function handleImport(body: {
     stock_disponible: p.stock,
     conditionnement: p.pcb,
     flux: flux === 'stock_wag' ? 'entrepot' : flux,
-    dluo: p.ddm ? (() => { try { return new Date(String(p.ddm)).toISOString().slice(0,10); } catch(e) { return null; } })() : null,
+    dluo: p.ddm ? (() => { try { return new Date(String(p.ddm)).toISOString().slice(0,10); } catch { return null; } })() : null,
     tva_taux: p.tva,
     visible_catalogue: false,
     statut: 'en_attente',
     photo_statut: 'non_trouvee',
     fournisseur_nom: fournisseur_nom,
     ...(fournisseurId ? { fournisseur_id: fournisseurId } : {}),
+    ...(offreId ? { offre_id: offreId } : {}),
   }));
 
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
@@ -297,18 +340,6 @@ async function handleImport(body: {
 
   const insertedIds = (data || []).map(r => r.id);
   console.log('[mercuriale] Insérés:', insertedIds.length, 'produits');
-
-  // Create produits_offres entry
-  try {
-    await supabase.from('produits_offres').insert({
-      source: fournisseur_nom,
-      statut_traitement: 'nouvelle',
-      nb_references: produits.length,
-      assigned_to: assigned_to || null,
-    });
-  } catch {
-    // Non bloquant
-  }
 
   // Create notification
   try {
