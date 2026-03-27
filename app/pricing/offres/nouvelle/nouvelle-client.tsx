@@ -416,162 +416,118 @@ export function NouvelleOffreClient() {
       )}
 
       {/* ═══ ÉTAPE 3: PREVIEW ═══ */}
-      {etape === 'preview' && (
-        <div className="space-y-4">
-          {/* Stats bar */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-6">
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{produits.length}</p>
-              <p className="text-xs text-gray-500">produits détectés</p>
+      {etape === 'preview' && (() => {
+        const stockTotal = produits.reduce((s, p) => s + (p.stock || 0), 0);
+        const valeurTotalePA = produits.reduce((s, p) => s + (p.prix_achat_ht || 0) * (p.stock || 0), 0);
+        const joursJ = (d: string | null) => { if (!d) return null; const dt = new Date(d); return isNaN(dt.getTime()) ? null : Math.round((dt.getTime() - Date.now()) / 86400000); };
+
+        return (
+          <div style={{ background: 'white', border: '0.5px solid #e5e7eb', borderRadius: '12px', padding: '24px' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 500, color: '#111827', marginBottom: '4px' }}>Vérification avant import</div>
+              <div style={{ fontSize: '12px', color: '#6b7280' }}>{fournisseur || 'Fournisseur inconnu'}</div>
             </div>
-            <div className="w-px h-10 bg-gray-200" />
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{nbTotal}</p>
-              <p className="text-xs text-gray-500">lignes dans le fichier (dont {produits.length} produit{produits.length > 1 ? 's' : ''})</p>
-            </div>
-            <div className="w-px h-10 bg-gray-200" />
-            <div>
-              <p className="text-2xl font-bold text-indigo-600">{colonnes.length}</p>
-              <p className="text-xs text-gray-500">colonnes détectées</p>
-            </div>
-            {fournisseur && (
-              <>
-                <div className="w-px h-10 bg-gray-200" />
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{fournisseur}</p>
-                  <p className="text-xs text-gray-500">fournisseur détecté{emailFournisseur ? ` — ${emailFournisseur}` : ''}</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              {[
+                { label: 'Produits détectés', value: String(produits.length), sub: null },
+                { label: 'Stock total', value: Math.round(stockTotal).toLocaleString('fr-FR'), sub: 'cartons' },
+                { label: 'Valeur est. PA', value: `${Math.round(valeurTotalePA).toLocaleString('fr-FR')} €`, sub: 'PA × stock total' },
+              ].map(({ label, value, sub }) => (
+                <div key={label} style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>{label}</div>
+                  <div style={{ fontSize: '24px', fontWeight: 500, color: '#111827' }}>{value}</div>
+                  {sub && <div style={{ fontSize: '11px', color: '#9ca3af' }}>{sub}</div>}
                 </div>
-              </>
-            )}
-            <div className="flex-1" />
-            <div className="text-xs text-gray-400">
-              Colonnes : {colonnes.join(', ')}
-            </div>
-          </div>
-
-          {/* Alertes */}
-          {alertes.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
-              <p className="text-sm font-medium text-amber-800">Colonnes manquantes :</p>
-              {alertes.map((a, i) => (
-                <p key={i} className="text-xs text-amber-700">&#x26A0; {a}</p>
               ))}
-              <p className="text-xs text-amber-600 mt-1">Vous pouvez corriger manuellement dans le tableau ci-dessous.</p>
             </div>
-          )}
 
-          {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-500 w-8">#</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-500 min-w-[200px]">Nom</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-500 min-w-[120px]">Marque</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-gray-500 min-w-[120px]">EAN</th>
-                    <th className="text-right px-3 py-2.5 font-semibold text-gray-500">Prix achat</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-500">PCB</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-500">Stock</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-500">DDM</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-gray-500 w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-900">
-                  {produits.map((p, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-400 text-xs">{i + 1}</td>
-                      <EditableCell
-                        value={p.nom}
-                        editing={editCell?.row === i && editCell?.col === 'nom'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'nom' })}
-                        onSave={v => { updateProduit(i, 'nom', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                      />
-                      <EditableCell
-                        value={p.marque}
-                        editing={editCell?.row === i && editCell?.col === 'marque'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'marque' })}
-                        onSave={v => { updateProduit(i, 'marque', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                      />
-                      <EditableCell
-                        value={p.ean}
-                        editing={editCell?.row === i && editCell?.col === 'ean'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'ean' })}
-                        onSave={v => { updateProduit(i, 'ean', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                        className="font-mono text-xs"
-                      />
-                      <EditableCell
-                        value={String(p.prix_achat_ht)}
-                        editing={editCell?.row === i && editCell?.col === 'prix_achat_ht'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'prix_achat_ht' })}
-                        onSave={v => { updateProduit(i, 'prix_achat_ht', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                        render={() => `${formatEur(p.prix_achat_ht)}${p.paSuspecte ? ' ⚠' : ''}`}
-                        align="right"
-                      />
-                      <EditableCell
-                        value={String(p.pcb)}
-                        editing={editCell?.row === i && editCell?.col === 'pcb'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'pcb' })}
-                        onSave={v => { updateProduit(i, 'pcb', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                        align="center"
-                      />
-                      <EditableCell
-                        value={String(p.stock)}
-                        editing={editCell?.row === i && editCell?.col === 'stock'}
-                        onStartEdit={() => setEditCell({ row: i, col: 'stock' })}
-                        onSave={v => { updateProduit(i, 'stock', v); setEditCell(null); }}
-                        onCancel={() => setEditCell(null)}
-                        align="center"
-                      />
-                      <td className="px-3 py-2 text-center text-xs">
-                        {p.ddm ? new Date(p.ddm).toLocaleDateString('fr-FR') : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <button
-                          onClick={() => removeProduit(i)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                          title="Supprimer"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </td>
+            <div style={{ border: '0.5px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', minWidth: '700px' }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb' }}>
+                      {[
+                        { label: '#', w: '4%' }, { label: 'Produit', w: '22%' }, { label: 'EAN', w: '12%' },
+                        { label: 'PA WAG HT', w: '10%' }, { label: 'Stock', w: '7%' }, { label: 'PCB', w: '6%' },
+                        { label: 'Valeur PA', w: '11%' }, { label: 'DDM', w: '14%' }, { label: 'PMC fourn.', w: '10%' },
+                        { label: '', w: '4%' },
+                      ].map(({ label, w }, idx) => (
+                        <th key={idx} style={{ width: w, padding: '8px 6px', textAlign: 'left', fontSize: '10px', fontWeight: 500, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {produits.map((p, i) => {
+                      const valeurPA = (p.prix_achat_ht || 0) * (p.stock || 0);
+                      const ddmJ = joursJ(p.ddm);
+                      return (
+                        <tr key={i} style={{ borderTop: '0.5px solid #f3f4f6', background: i % 2 === 0 ? 'white' : '#f9fafb' }}>
+                          <td style={{ padding: '8px 6px', color: '#9ca3af', fontSize: '10px' }}>{i + 1}</td>
+                          <td style={{ padding: '8px 6px' }}>
+                            <div style={{ fontWeight: 500, color: '#111827', lineHeight: 1.3 }}>{p.nom || '—'}</div>
+                            {p.marque && <div style={{ fontSize: '10px', color: '#9ca3af' }}>{p.marque}</div>}
+                          </td>
+                          <td style={{ padding: '8px 6px', fontSize: '11px', color: '#6b7280', fontFamily: 'monospace' }}>{p.ean || '—'}</td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                            <span style={{ fontWeight: 500, color: p.paSuspecte ? '#d97706' : '#111827' }}>
+                              {p.prix_achat_ht ? `${p.prix_achat_ht.toFixed(2).replace('.', ',')} €` : '—'}
+                            </span>
+                            {p.paSuspecte && <span title={p.paWarning ?? ''} style={{ cursor: 'help', color: '#d97706', marginLeft: '3px' }}>⚠</span>}
+                          </td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', color: '#111827' }}>{p.stock || '—'}</td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', color: '#6b7280' }}>{p.pcb || '—'}</td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 500, color: '#111827' }}>
+                            {valeurPA > 0 ? `${Math.round(valeurPA).toLocaleString('fr-FR')} €` : '—'}
+                          </td>
+                          <td style={{ padding: '8px 6px' }}>
+                            {p.ddm ? (
+                              <>
+                                <div style={{ color: '#111827' }}>{new Date(p.ddm).toLocaleDateString('fr-FR')}</div>
+                                {ddmJ !== null && (
+                                  <span style={{
+                                    display: 'inline-block', padding: '1px 6px', borderRadius: '9999px', fontSize: '10px', fontWeight: 500,
+                                    background: ddmJ < 0 ? '#fee2e2' : ddmJ < 30 ? '#fef3c7' : 'transparent',
+                                    color: ddmJ < 0 ? '#991b1b' : ddmJ < 30 ? '#92400e' : '#16a34a',
+                                  }}>
+                                    {ddmJ < 0 ? 'Dépassé' : `${ddmJ}j`}
+                                  </span>
+                                )}
+                              </>
+                            ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '8px 6px', color: '#9ca3af' }}>—</td>
+                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                            <button onClick={() => removeProduit(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '14px' }}>×</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: '0.5px solid #d1d5db', background: '#f9fafb' }}>
+                      <td colSpan={6} style={{ padding: '8px 6px', textAlign: 'right', fontSize: '11px', color: '#9ca3af' }}>Total</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', fontSize: '12px', fontWeight: 500, color: '#111827' }}>{Math.round(valeurTotalePA).toLocaleString('fr-FR')} €</td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {produits.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af', fontSize: '13px' }}>Aucun produit détecté</div>
+              )}
             </div>
-            {produits.length === 0 && (
-              <div className="text-center py-8 text-sm text-gray-400">Aucun produit détecté</div>
-            )}
-          </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => { setEtape('upload'); setProduits([]); }}
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              &larr; Recommencer
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={produits.length === 0}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-semibold px-6 py-3 rounded-lg transition-colors flex items-center gap-2"
-            >
-              Importer {produits.length} produit{produits.length > 1 ? 's' : ''} &rarr;
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button onClick={() => { setEtape('upload'); setProduits([]); }} style={{ fontSize: '13px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}>
+                ← Recommencer
+              </button>
+              <button onClick={handleImport} disabled={produits.length === 0}
+                style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: produits.length === 0 ? '#e5e7eb' : '#4f46e5', color: 'white', fontSize: '13px', fontWeight: 500, cursor: produits.length === 0 ? 'not-allowed' : 'pointer' }}>
+                Importer {produits.length} produit{produits.length > 1 ? 's' : ''} →
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ ÉTAPE 4: IMPORT EN COURS / RÉSULTAT ═══ */}
       {etape === 'import' && loading && (
