@@ -1,8 +1,15 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { AuthGuard } from '../components/auth-guard'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ProduitEnLigne = Record<string, any>
+interface ProduitEnLigne {
+  id: string
+  nom: string
+  dluo?: string | null
+  stock_disponible?: number | null
+  prix_vente_wag_ht?: number | null
+  fournisseur_nom?: string | null
+  pcb?: number | null
+}
 
 const formatDate = (d?: string | null): string => {
   if (!d) return '—'
@@ -10,33 +17,29 @@ const formatDate = (d?: string | null): string => {
   return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('fr-FR')
 }
 
-async function getProduitsEnLigne(): Promise<ProduitEnLigne[]> {
+async function getProduitsEnLigne(): Promise<{ produits: ProduitEnLigne[]; error: string | null }> {
   try {
     const { data, error } = await supabaseAdmin
       .from('produits')
-      .select('*')
+      .select('id, nom, dluo, stock_disponible, prix_vente_wag_ht, fournisseur_nom, pcb')
       .eq('statut', 'valide')
       .eq('visible_catalogue', true)
       .not('prix_vente_wag_ht', 'is', null)
       .order('dluo', { ascending: true })
 
-    if (error) console.error('[produits-en-ligne] error:', JSON.stringify(error))
-    console.log('[produits-en-ligne] count:', data?.length, 'first keys:', Object.keys(data?.[0] ?? {}).filter(k => k.includes('stock') || k.includes('fournisseur') || k.includes('pcb') || k.includes('qmc')).join(', '))
-
     if (error) {
-      console.error('[produits-en-ligne] Supabase error:', error.message)
-      return []
+      console.error('[produits-en-ligne] error:', error.message)
+      return { produits: [], error: error.message }
     }
-
-    return data ?? []
+    return { produits: (data ?? []) as ProduitEnLigne[], error: null }
   } catch (err) {
-    console.error('[produits-en-ligne] Erreur:', err)
-    return []
+    console.error('[produits-en-ligne] crash:', err)
+    return { produits: [], error: 'Erreur inattendue' }
   }
 }
 
 export default async function ProduitsEnLignePage() {
-  const produits = await getProduitsEnLigne()
+  const { produits, error } = await getProduitsEnLigne()
 
   return (
     <AuthGuard>
@@ -57,6 +60,12 @@ export default async function ProduitsEnLignePage() {
             </svg>
           </a>
         </div>
+
+        {error && (
+          <div style={{ background: '#fee2e2', border: '0.5px solid #fca5a5', borderRadius: '8px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: '#991b1b' }}>
+            Erreur de chargement — {error}
+          </div>
+        )}
 
         <div style={{ background: 'white', border: '0.5px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
@@ -85,7 +94,7 @@ export default async function ProduitsEnLignePage() {
                     {p.prix_vente_wag_ht != null ? `${Number(p.prix_vente_wag_ht).toFixed(2)} €` : '—'}
                   </td>
                   <td style={{ padding: '10px 8px', color: '#6b7280' }}>
-                    {p.qmc ?? p.pcb ?? '—'}
+                    {p.pcb ?? '—'}
                   </td>
                   <td style={{ padding: '10px 8px', color: '#6b7280' }}>
                     {p.fournisseur_nom ?? '—'}
