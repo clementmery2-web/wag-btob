@@ -411,18 +411,6 @@ export function NouvelleOffreClient() {
             </p>
           </div>
 
-          {/* Detected columns list */}
-          <div className="bg-gray-50 rounded-lg px-4 py-3">
-            <p className="text-xs font-medium text-gray-500 mb-1">Colonnes détectées dans le fichier :</p>
-            <div className="flex flex-wrap gap-1.5">
-              {colonnes.map((col, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-xs text-gray-700">
-                  <span className="text-gray-400 font-mono">{i}</span> {col}
-                </span>
-              ))}
-            </div>
-          </div>
-
           {/* Field mapping dropdowns */}
           <div className="space-y-3">
             {MAPPING_FIELDS.map(({ key, label, required }) => (
