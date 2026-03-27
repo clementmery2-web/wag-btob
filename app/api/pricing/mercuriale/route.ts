@@ -331,9 +331,31 @@ async function handleImport(body: {
 
   console.log('[mercuriale] Insert payload sample:', JSON.stringify(rows[0]));
 
+  // 4. Deduplicate by EAN — skip products already in DB for this offre
+  let rowsToInsert = rows;
+  if (offreId) {
+    const eansToCheck = rows.map(r => r.ean).filter((e): e is string => !!e);
+    if (eansToCheck.length > 0) {
+      const { data: existing } = await supabase
+        .from('produits')
+        .select('ean')
+        .eq('offre_id', offreId)
+        .in('ean', eansToCheck);
+      const existingEans = new Set((existing ?? []).map(e => e.ean));
+      if (existingEans.size > 0) {
+        rowsToInsert = rows.filter(r => !r.ean || !existingEans.has(r.ean));
+        console.log('[mercuriale] Dedup: skipped', rows.length - rowsToInsert.length, 'doublons EAN');
+      }
+    }
+  }
+
+  if (rowsToInsert.length === 0) {
+    return NextResponse.json({ success: true, nb_importes: 0, fournisseur_nom, offre_id: offreId });
+  }
+
   const { data, error } = await supabase
     .from('produits')
-    .insert(rows)
+    .insert(rowsToInsert)
     .select('id');
 
   if (error) {
