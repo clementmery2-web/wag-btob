@@ -28,15 +28,52 @@ const COLUMN_PATTERNS: Record<string, RegExp> = {
   ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
   poids: /poids|kg|gramm|weight|net/i,
   tva: /tva|taxe/i,
-  pmc_ht: /pmc|prix\s*moyen\s*constat[ée]/i,
+  pmc_ht: /pmc|prix\s*moyen\s*constat[ée]|mktg\s*conseill|prix\s*conseill/i,
 };
 
 // prix_achat_wag_ht patterns in priority order (first match wins)
 const PRIX_PATTERNS: RegExp[] = [
   /prix\s*anti[\s-]*gaspi/i,
+  /prix\s*net\s*factur|net\s*factur/i,
   /prix\s*achat|pa[\s.]?ht|achat[\s.]?ht/i,
   /prix|tarif|cost|p\.?u/i,
 ];
+
+/**
+ * Detect the real header row in the first N rows of the sheet.
+ * Many supplier files have a title / blank rows before the actual headers.
+ * Heuristic: first row where ≥ 3 cells are non-empty strings (not numbers, not dates).
+ * Returns the 0-based index of the header row, or 0 as fallback.
+ */
+function detectHeaderRow(rows: unknown[][], maxScan = 10): number {
+  const limit = Math.min(rows.length, maxScan);
+  for (let i = 0; i < limit; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+    let stringCount = 0;
+    for (const cell of row) {
+      if (cell == null || cell === '') continue;
+      // Dates and numbers are not header labels
+      if (cell instanceof Date) continue;
+      if (typeof cell === 'number') continue;
+      const s = String(cell).trim();
+      // Skip cells that look like Excel formulas left as strings (e.g. "=I6+J6")
+      if (s.startsWith('=')) continue;
+      if (s.length > 0) stringCount++;
+    }
+    if (stringCount >= 3) return i;
+  }
+  return 0; // fallback: first row
+}
+
+/** Read a cell as a number, ignoring Excel formula strings like "=I6+J6". */
+function safeNum(cell: unknown): number {
+  if (cell == null || cell === '') return 0;
+  if (typeof cell === 'number') return cell;
+  const s = String(cell).trim();
+  if (s.startsWith('=')) return 0; // unresolved formula
+  return parseFloat(s.replace(',', '.')) || 0;
+}
 
 function matchColumns(headers: string[]): Record<string, number> {
   const mapping: Record<string, number> = {};
@@ -120,7 +157,11 @@ async function handleParse(req: NextRequest) {
       const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
       if (rows.length < 2) continue;
 
-      const headers = (rows[0] as unknown[]).map(c => String(c ?? '').trim());
+      // Auto-detect real header row (skip title / blank rows)
+      const headerIdx = detectHeaderRow(rows);
+      console.log('[mercuriale] Feuille', sheetName, '— ligne d\'en-tête détectée:', headerIdx);
+
+      const headers = (rows[headerIdx] as unknown[]).map(c => String(c ?? '').trim());
       if (colonnes.length === 0) colonnes = headers;
 
       const autoMap = matchColumns(headers);
@@ -134,8 +175,8 @@ async function handleParse(req: NextRequest) {
         fournisseurNomDetecte = sheetName;
       }
 
-      totalRows += Math.max(0, rows.length - 1);
-      const dataRows = rows.slice(1);
+      totalRows += Math.max(0, rows.length - headerIdx - 1);
+      const dataRows = rows.slice(headerIdx + 1);
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -143,18 +184,18 @@ async function handleParse(req: NextRequest) {
         if (i === 0) {
           console.log('[mercuriale] Valeur brute index 14:', row[14], typeof row[14]);
         }
-        const prix = colMap.prix !== undefined ? parseFloat(String(row[colMap.prix] ?? 0).replace(',', '.')) || 0 : 0;
+        const prix = colMap.prix !== undefined ? safeNum(row[colMap.prix]) : 0;
 
         // Skip empty rows
         if (!nom && !prix) continue;
 
         if (i === 0) {
           const ean = colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '';
-          const stock = colMap.stock !== undefined ? Math.max(0, Math.round(Number(row[colMap.stock]) || 0)) : 0;
+          const stock = colMap.stock !== undefined ? Math.max(0, Math.round(safeNum(row[colMap.stock]))) : 0;
           console.log('[mercuriale] Ligne 1 extraite:', JSON.stringify({nom, prix, ean, stock}));
         }
 
-        const tvaRaw = colMap.tva !== undefined ? Number(row[colMap.tva]) : NaN;
+        const tvaRaw = colMap.tva !== undefined ? safeNum(row[colMap.tva]) : NaN;
         const ddmRaw = colMap.ddm !== undefined ? String(row[colMap.ddm] ?? '').trim() : '';
 
         cleanProduits.push({
@@ -163,12 +204,12 @@ async function handleParse(req: NextRequest) {
           marque: colMap.marque !== undefined ? String(row[colMap.marque] ?? '').trim() : '',
           ean: colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '',
           prix_achat_ht: Math.max(0, prix),
-          pcb: colMap.pcb !== undefined ? Math.max(1, Math.round(Number(row[colMap.pcb]) || 1)) : 1,
-          stock: colMap.stock !== undefined ? Math.max(0, Math.round(Number(row[colMap.stock]) || 0)) : 0,
+          pcb: colMap.pcb !== undefined ? Math.max(1, Math.round(safeNum(row[colMap.pcb]) || 1)) : 1,
+          stock: colMap.stock !== undefined ? Math.max(0, Math.round(safeNum(row[colMap.stock]))) : 0,
           ddm: ddmRaw || null,
           tva: [5.5, 20].includes(tvaRaw) ? tvaRaw : 5.5,
-          poids: colMap.poids !== undefined ? Number(row[colMap.poids]) || null : null,
-          pmc_fournisseur: colMap.pmc_ht !== undefined ? parseFloat(String(row[colMap.pmc_ht] ?? 0).replace(',', '.')) || null : null,
+          poids: colMap.poids !== undefined ? safeNum(row[colMap.poids]) || null : null,
+          pmc_fournisseur: colMap.pmc_ht !== undefined ? safeNum(row[colMap.pmc_ht]) || null : null,
         });
       }
     }
