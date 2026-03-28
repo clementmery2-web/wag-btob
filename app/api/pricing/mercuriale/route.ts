@@ -164,9 +164,15 @@ async function handleParse(req: NextRequest) {
       const headerIdx = detectHeaderRow(rows);
       console.log('[mercuriale] Feuille', sheetName, '— ligne d\'en-tête détectée:', headerIdx);
 
-      const headers = (rows[headerIdx] as unknown[]).map(c => String(c ?? '').trim());
-      if (colonnes.length === 0) colonnes = headers;
+      // colonnes = ALL header names from the file (not filtered by pattern matching)
+      // auto_mapping = suggested field→column index (from pattern matching, independent)
+      const rawHeaders = (rows[headerIdx] as unknown[]).map(c => String(c ?? '').trim());
+      // Trim trailing empty columns (XLSX pads with defval to full sheet width)
+      let lastNonEmpty = rawHeaders.length - 1;
+      while (lastNonEmpty >= 0 && rawHeaders[lastNonEmpty] === '') lastNonEmpty--;
+      const headers = rawHeaders.slice(0, lastNonEmpty + 1);
 
+      if (colonnes.length === 0) colonnes = headers;
       console.log('[mercuriale] noms colonnes bruts:', colonnes.map(c => JSON.stringify(c)));
 
       const autoMap = matchColumns(headers);
