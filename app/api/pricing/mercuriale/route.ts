@@ -17,54 +17,61 @@ interface ProduitParse {
   pmc_fournisseur?: number | null;
 }
 
-// Map Excel column headers to known fields via keyword matching
+// ── Normalize header text: lowercase, collapse whitespace, strip accents ──
+const normalize = (s: string) =>
+  s.toLowerCase().trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[àáâ]/g, 'a').replace(/[éèêë]/g, 'e')
+    .replace(/[îï]/g, 'i').replace(/[ôö]/g, 'o')
+    .replace(/[ùûü]/g, 'u').replace(/[ç]/g, 'c');
+
+// Map Excel column headers to known fields via keyword matching (on normalized text)
 const COLUMN_PATTERNS: Record<string, RegExp> = {
-  ref: /r[ée]f|code.?art|sku|reference/i,
-  nom: /nom|d[ée]sign(?:ation)?|libell[ée]|produit|article/i,
-  marque: /marque|brand|fabricant/i,
-  ean: /ean|gtin|code.?bar/i,
-  pcb: /pcb|colis|colisage|lot|uvs/i,
-  stock: /stock|qt[ée]|quantit[ée]|dispo|uc[\s/]*box|total\s*uc|uc\s*disponible/i,
-  ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
-  poids: /poids|kg|gramm|weight|net\s*(?:g|kg|poids)/i,
-  tva: /tva|taxe/i,
-  pmc_ht: /pmc|prix\s*moyen\s*constat[ée]|mktg\s*conseill|prix\s*conseill/i,
+  ref: /ref|code.?art|sku|reference/,
+  nom: /nom|designation|libelle|produit|article/,
+  marque: /marque|brand|fabricant/,
+  ean: /ean|gtin|code.?bar/,
+  pcb: /pcb|colis|colisage|lot|uvs/,
+  stock: /stock|qte|quantite|dispo|uc[\s/]*box|total uc|total cartons|uc disponible/,
+  ddm: /ddm|dluo|dlc|date.*limite|expir|perem/,
+  poids: /poids|kg|gramm|weight|net (?:g|kg|poids)/,
+  tva: /tva|taxe/,
+  pmc_ht: /pmc|prix moyen constate|mktg conseill|prix conseill/,
 };
 
-// prix_achat_wag_ht patterns in priority order (first match wins)
+// prix_achat_wag_ht patterns in priority order (first match wins, on normalized text)
 // "PA B2B SANS ECO" is a computed price, not the raw PA → excluded via PRIX_EXCLUDE
-const PRIX_EXCLUDE = /b2b\s*sans\s*eco|eco[\s-]*emb/i;
+const PRIX_EXCLUDE = /b2b sans eco|eco[\s-]*emb/;
 const PRIX_PATTERNS: RegExp[] = [
-  /prix\s*anti[\s-]*gaspi/i,
-  /prix\s*net\s*factur[ée]?\s*uc|net\s*factur[ée]?\s*uc/i,
-  /prix\s*net\s*factur|net\s*factur/i,
-  /prix\s*achat|pa[\s.]?ht|achat[\s.]?ht/i,
-  /prix|tarif|cost|p\.?u/i,
+  /prix anti[\s-]*gaspi/,
+  /prix net facture(?:e)? uc|net facture(?:e)? uc/,
+  /prix net factur|net factur/,
+  /prix achat|pa[\s.]?ht|achat[\s.]?ht/,
+  /prix|tarif|cost|p\.?u/,
 ];
 
 /**
  * Detect the real header row in the first N rows of the sheet.
- * Many supplier files have a title / blank rows before the actual headers.
- * Heuristic: first row where ≥ 3 cells are non-empty strings (not numbers, not dates).
- * Returns the 0-based index of the header row, or 0 as fallback.
+ *
+ * With xlsx + defval:'', every cell is present (never null), so we count
+ * cells that are non-empty strings (length > 0 after trim) AND not formulas.
+ * The header = first row with ≥ 4 such cells.
  */
-function detectHeaderRow(rows: unknown[][], maxScan = 10): number {
+function detectHeaderRow(rows: unknown[][], maxScan = 15): number {
   const limit = Math.min(rows.length, maxScan);
   for (let i = 0; i < limit; i++) {
     const row = rows[i];
     if (!Array.isArray(row)) continue;
     let stringCount = 0;
     for (const cell of row) {
-      if (cell == null || cell === '') continue;
-      // Dates and numbers are not header labels
-      if (cell instanceof Date) continue;
-      if (typeof cell === 'number') continue;
-      const s = String(cell).trim();
-      // Skip cells that look like Excel formulas left as strings (e.g. "=I6+J6")
+      const s = String(cell ?? '').trim();
+      // Must be a non-empty string that isn't a formula and isn't purely a number
+      if (s.length === 0) continue;
       if (s.startsWith('=')) continue;
-      if (s.length > 0) stringCount++;
+      if (/^\d+([.,]\d+)?$/.test(s)) continue; // pure numeric string
+      stringCount++;
     }
-    if (stringCount >= 3) return i;
+    if (stringCount >= 4) return i;
   }
   return 0; // fallback: first row
 }
@@ -150,16 +157,17 @@ function parseDdm(cell: unknown): string | null {
 }
 
 function matchColumns(headers: string[]): Record<string, number> {
+  const normalized = headers.map(normalize);
   const mapping: Record<string, number> = {};
   for (const [field, pattern] of Object.entries(COLUMN_PATTERNS)) {
-    const idx = headers.findIndex(h => pattern.test(h));
+    const idx = normalized.findIndex(h => pattern.test(h));
     if (idx !== -1) mapping[field] = idx;
   }
   // Match prix with priority: antigaspi > prix net facturé UC > prix achat > generic
   // Exclude columns already mapped (e.g. pmc_ht) and computed prices (PA B2B SANS ECO)
   const usedIndices = new Set(Object.values(mapping));
   for (const pattern of PRIX_PATTERNS) {
-    const idx = headers.findIndex((h, i) => !usedIndices.has(i) && !PRIX_EXCLUDE.test(h) && pattern.test(h));
+    const idx = normalized.findIndex((h, i) => !usedIndices.has(i) && !PRIX_EXCLUDE.test(h) && pattern.test(h));
     if (idx !== -1) {
       mapping.prix = idx;
       break;
@@ -234,10 +242,9 @@ async function handleParse(req: NextRequest) {
 
       // Auto-detect real header row (skip title / blank rows)
       const headerIdx = detectHeaderRow(rows);
-      console.log('[mercuriale] Feuille', sheetName, '— ligne d\'en-tête détectée:', headerIdx);
+      console.log('[mercuriale] headerRow index:', headerIdx);
 
       // colonnes = ALL header names from the file (not filtered by pattern matching)
-      // auto_mapping = suggested field→column index (from pattern matching, independent)
       const rawHeaders = (rows[headerIdx] as unknown[]).map(c => String(c ?? '').trim());
       // Trim trailing empty columns (XLSX pads with defval to full sheet width)
       let lastNonEmpty = rawHeaders.length - 1;
@@ -245,7 +252,7 @@ async function handleParse(req: NextRequest) {
       const headers = rawHeaders.slice(0, lastNonEmpty + 1);
 
       if (colonnes.length === 0) colonnes = headers;
-      console.log('[mercuriale] noms colonnes bruts:', colonnes.map(c => JSON.stringify(c)));
+      console.log('[mercuriale] colonnes trouvées:', colonnes);
 
       const autoMap = matchColumns(headers);
       if (Object.keys(autoMapping).length === 0) autoMapping = autoMap;
