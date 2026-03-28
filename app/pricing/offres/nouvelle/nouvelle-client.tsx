@@ -127,15 +127,20 @@ export function NouvelleOffreClient() {
         return;
       }
 
-      setColonnes(data.colonnes || []);
+      console.log('[wizard] Réponse brute API analyse:', JSON.stringify(data));
+
+      const apiColonnes: string[] = data.colonnes || [];
+      const apiAutoMapping: Record<string, number> = data.auto_mapping || {};
+      console.log('[wizard] colonnes après parsing:', apiColonnes);
+      console.log('[wizard] mapping après parsing:', apiAutoMapping);
+
+      setColonnes(apiColonnes);
       setNbTotal(data.nb_total || 0);
       // Auto-fill fournisseur info from Claude detection
       if (data.fournisseur_nom) setFournisseur(data.fournisseur_nom);
-      // Store auto-mapping and pre-fill user mapping
-      if (data.auto_mapping) {
-        setAutoMapping(data.auto_mapping);
-        setMapping(data.auto_mapping);
-      }
+      // Always set mapping from auto_mapping (even if empty)
+      setAutoMapping(apiAutoMapping);
+      setMapping(apiAutoMapping);
       setEtape('mapping');
     } catch {
       setErreur('Erreur réseau. Veuillez réessayer.');
@@ -392,7 +397,7 @@ export function NouvelleOffreClient() {
 
           <button
             onClick={handleAnalyse}
-            disabled={!fichier}
+            disabled={!fichier || loading}
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
           >
             Analyser la mercuriale
@@ -439,7 +444,7 @@ export function NouvelleOffreClient() {
                 >
                   <option value="">— Non mappé —</option>
                   {colonnes.map((col, i) => (
-                    <option key={i} value={i}>{col}</option>
+                    <option key={i} value={String(i)}>{col}</option>
                   ))}
                 </select>
                 {/* Show auto-detected badge */}
