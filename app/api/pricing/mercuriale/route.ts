@@ -255,6 +255,9 @@ async function handleParse(req: NextRequest) {
   if (validProduits.every(p => p.pcb === 1)) alertes.push('Aucun PCB/colisage détecté');
 
   console.log('[mercuriale] Produits valides:', validProduits.length, '/', totalRows, '| Alertes:', alertes);
+  console.log('[mercuriale] colonnes détectées:', colonnes);
+  console.log('[mercuriale] auto_mapping:', JSON.stringify(autoMapping));
+  console.log('[mercuriale] nb produits parsés:', validProduits.length);
 
   if (isLargeFile) {
     alertes.push('Fichier volumineux');

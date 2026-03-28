@@ -128,6 +128,8 @@ export function NouvelleOffreClient() {
       }
 
       console.log('[wizard] Réponse brute API analyse:', JSON.stringify(data));
+      console.log('[client] réponse API analyse:', JSON.stringify(data));
+      console.log('[client] colonnes settées:', data.colonnes);
 
       const apiColonnes: string[] = data.colonnes || [];
       const apiAutoMapping: Record<string, number> = data.auto_mapping || {};
