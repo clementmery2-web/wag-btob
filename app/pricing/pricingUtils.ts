@@ -17,37 +17,77 @@ export function getPMCEffectif(
   return null
 }
 
+/**
+ * K_dluo — coefficient de décote selon le flux et la durée de vie restante (DDM).
+ *
+ *  - Dropshipping : toujours 0.48 (pas de stock, pas de risque DDM)
+ *  - Entrepôt / Transit :
+ *      > 90 j → 0.48
+ *      > 30 j → 0.40
+ *      > 15 j → 0.32
+ *      ≤ 15 j → 0.25
+ *  - Pas de DDM renseignée → 0.48 par défaut
+ */
+export function calculerKDluo(flux: string | undefined, dluo: string | null): number {
+  if (!flux || flux === 'dropshipping') return 0.48
+  if (!dluo) return 0.48
+  const jours = Math.floor((new Date(dluo).getTime() - Date.now()) / 86400000)
+  if (jours > 90) return 0.48
+  if (jours > 30) return 0.40
+  if (jours > 15) return 0.32
+  return 0.25
+}
+
+/**
+ * Classification A / B / C / D et calcul du PV B2B.
+ *
+ * PMC issu de getPMCEffectif() est en HT (pmc_fournisseur provient de la
+ * colonne « PMC HT » du fichier mercuriale ; pmc_reference est stocké HT
+ * en base — cf. mapToBackofficeProduit qui calcule pmc_ttc_gd = pmc × (1 + TVA)).
+ * Si un jour le PMC entrait en TTC, il faudrait diviser par (1 + tva_taux/100)
+ * avant le calcul du ratio.
+ *
+ * ratio = PA / (PMC_HT × K_dluo)
+ *   A  : ratio < 20 %  → PV = PMC_HT × K_dluo × 0.40
+ *   B  : ratio < 43 %  → PV = PMC_HT × K_dluo × 0.48
+ *   C  : ratio < 50 %  → cible = PMC_HT × K_dluo × (0.48 / 1.15)
+ *   D  : ratio ≥ 50 %  → REFUS
+ */
 export function calculerScenarioResult(
   produit: Produit,
   pmcEdits: Record<string, number | null>
 ): ScenarioResult {
   const pa = produit.prix_achat_wag_ht
-  const pmc = getPMCEffectif(produit, pmcEdits)
+  const pmcHt = getPMCEffectif(produit, pmcEdits)
+  const empty: ScenarioResult = { scenario: 'PMC_REQUIS', pmc: null, kdluo: null, ratio: null, gap: null, pv: null, multiplicateur: null, marge: null, cible: null }
 
-  if (pmc === null) {
-    return { scenario: 'PMC_REQUIS', pmc: null, ratio: null, gap: null, pv: null, multiplicateur: null, marge: null, cible: null }
-  }
+  if (pmcHt === null) return empty
 
-  const ratio = Math.round(pa / pmc * 100 * 10) / 10
-  const gap = Math.round((pa - pmc * 0.55) / pa * 100 * 10) / 10
+  const kdluo = calculerKDluo(produit.flux, produit.dluo)
+  const prixRef = pmcHt * kdluo
+  if (prixRef === 0) return empty
 
-  if (ratio < 30) {
-    const pv = Math.round(pmc * 0.40 * 100) / 100
+  const ratioRaw = pa / prixRef
+  const ratio = Math.round(ratioRaw * 1000) / 10   // e.g. 0.1953 → 19.5 %
+  const gap = Math.round((pa - pmcHt * 0.48) / pa * 100 * 10) / 10
+
+  if (ratioRaw < 0.20) {
+    const pv = Math.round(pmcHt * kdluo * 0.40 * 100) / 100
     const multiplicateur = Math.round((pv / pa) * 100) / 100
     const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
-    return { scenario: 'A', pmc, ratio, gap, pv, multiplicateur, marge, cible: null }
+    return { scenario: 'A', pmc: pmcHt, kdluo, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
-  if (ratio <= 55) {
-    const pv = Math.round(pmc * 0.55 * 100) / 100
+  if (ratioRaw < 0.43) {
+    const pv = Math.round(pmcHt * kdluo * 0.48 * 100) / 100
     const multiplicateur = Math.round((pv / pa) * 100) / 100
     const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
-    return { scenario: 'B', pmc, ratio, gap, pv, multiplicateur, marge, cible: null }
+    return { scenario: 'B', pmc: pmcHt, kdluo, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
-  if (gap <= 50) {
-    const cible = Math.round(pmc * 0.55 / 1.15 * 100) / 100
-    return { scenario: 'C', pmc, ratio, gap, pv: null, multiplicateur: null, marge: null, cible }
+  if (ratioRaw < 0.50) {
+    const cible = Math.round(pmcHt * kdluo * (0.48 / 1.15) * 100) / 100
+    return { scenario: 'C', pmc: pmcHt, kdluo, ratio, gap, pv: null, multiplicateur: null, marge: null, cible }
   }
-  return { scenario: 'D', pmc, ratio, gap, pv: null, multiplicateur: null, marge: null, cible: null }
+  return { scenario: 'D', pmc: pmcHt, kdluo, ratio, gap, pv: null, multiplicateur: null, marge: null, cible: null }
 }
 
 export function formaterDate(isoString: string | null): string {

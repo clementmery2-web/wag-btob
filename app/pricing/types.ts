@@ -8,6 +8,8 @@ export interface Produit {
   ean: string | null
   categorie: string | null
   fournisseur_nom: string
+  flux?: string
+  tva_taux?: number
   prix_achat_wag_ht: number
   prix_vente_wag_ht: number | null
   pmc_reference: number | null
@@ -25,6 +27,7 @@ export interface Produit {
 export interface ScenarioResult {
   scenario: Scenario
   pmc: number | null
+  kdluo: number | null
   ratio: number | null
   gap: number | null
   pv: number | null
