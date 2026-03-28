@@ -178,19 +178,14 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
       .sort((a, b) => b.dateImport.getTime() - a.dateImport.getTime())
   }, [produits, assigneParFournisseur, offreIdParFournisseur])
 
-  // Open only the last group by default
-  const groupesKey = groupes.map(g => g.nom).join(',')
+  // All groups collapsed by default at first load
   useEffect(() => {
     if (groupes.length === 0) return
-    setCollapsed(prev => {
-      const dejaInitialise = Object.keys(prev).length > 0
-      if (dejaInitialise) return prev
-      const result: Record<string, boolean> = {}
-      groupes.forEach((g, i) => { result[g.nom] = i !== groupes.length - 1 })
-      return result
-    })
+    const initial: Record<string, boolean> = {}
+    groupes.forEach(g => { initial[g.nom] = true })
+    setCollapsed(initial)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupesKey])
+  }, [groupes.length])
 
   // ─── Handlers ───────────────────────────────────────────────
 
