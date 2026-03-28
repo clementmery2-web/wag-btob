@@ -106,6 +106,12 @@ export function NouvelleOffreClient() {
   const handleAnalyse = useCallback(async () => {
     if (!fichier) { setErreur('Fichier requis'); return; }
 
+    // #5: Clear stale data before API call so old columns/mapping don't persist on failure
+    setColonnes([]);
+    setMapping({});
+    setAutoMapping({});
+    setProduits([]);
+    setAlertes([]);
     setErreur('');
     setLoading(true);
     setEtape('analyse');
@@ -460,7 +466,7 @@ export function NouvelleOffreClient() {
           {/* Actions */}
           <div className="flex items-center justify-between pt-2">
             <button
-              onClick={() => { setEtape('upload'); setMapping({}); sessionStorage.removeItem(WIZARD_KEY); }}
+              onClick={() => { setEtape('upload'); setFichier(null); setColonnes([]); setMapping({}); setAutoMapping({}); setProduits([]); setAlertes([]); sessionStorage.removeItem(WIZARD_KEY); }}
               className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               &larr; Recommencer
@@ -680,7 +686,7 @@ export function NouvelleOffreClient() {
 
             {/* Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 4 }}>
-              <button onClick={() => { setEtape('upload'); setProduits([]); sessionStorage.removeItem(WIZARD_KEY); }} style={{ fontSize: '13px', color: 'var(--color-text-secondary, #6b7280)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <button onClick={() => { setEtape('upload'); setFichier(null); setColonnes([]); setMapping({}); setAutoMapping({}); setProduits([]); setAlertes([]); sessionStorage.removeItem(WIZARD_KEY); }} style={{ fontSize: '13px', color: 'var(--color-text-secondary, #6b7280)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 ← Recommencer
               </button>
               <div style={{ textAlign: 'right' }}>

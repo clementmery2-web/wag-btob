@@ -78,6 +78,77 @@ function safeNum(cell: unknown): number {
   return parseFloat(s.replace(',', '.')) || 0;
 }
 
+/** Returns true if a cell contains an unresolved Excel formula. */
+function isFormula(cell: unknown): boolean {
+  if (cell == null || cell === '') return false;
+  if (typeof cell !== 'string') return false;
+  return cell.trim().startsWith('=');
+}
+
+/**
+ * Normalize EAN: strip whitespace, trailing ".0", keep only 8-14 digit codes.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeEan(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).replace(/\s/g, '').replace(/\.0+$/, '').trim();
+  return /^\d{8,14}$/.test(s) ? s : null;
+}
+
+/**
+ * Parse DDM (date de durabilité minimale) from heterogeneous formats:
+ *  - JS Date / datetime  → DD/MM/YYYY
+ *  - String "01/08/2026" → kept as-is
+ *  - String "12 mois"    → today + N months → DD/MM/YYYY
+ *  - Anything else        → null
+ */
+function parseDdm(cell: unknown): string | null {
+  if (cell == null || cell === '') return null;
+
+  // JS Date from cellDates:true
+  if (cell instanceof Date) {
+    if (isNaN(cell.getTime())) return null;
+    const d = cell.getDate().toString().padStart(2, '0');
+    const m = (cell.getMonth() + 1).toString().padStart(2, '0');
+    const y = cell.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  const s = String(cell).trim();
+  if (!s || s.startsWith('=')) return null;
+
+  // "12 mois", "6 mois", etc. → approximate date
+  const moisMatch = s.match(/^(\d{1,3})\s*mois$/i);
+  if (moisMatch) {
+    const n = parseInt(moisMatch[1], 10);
+    const future = new Date();
+    future.setMonth(future.getMonth() + n);
+    const d = future.getDate().toString().padStart(2, '0');
+    const m = (future.getMonth() + 1).toString().padStart(2, '0');
+    const y = future.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  // Already formatted string (DD/MM/YYYY, YYYY-MM-DD, etc.)
+  // Try native parse first
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000) {
+    const d = parsed.getDate().toString().padStart(2, '0');
+    const m = (parsed.getMonth() + 1).toString().padStart(2, '0');
+    const y = parsed.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  // DD/MM/YYYY manual parse (Date constructor reads it as MM/DD)
+  const frMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (frMatch) {
+    const [, dd, mm, yyyy] = frMatch;
+    return `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yyyy}`;
+  }
+
+  return null; // unparseable → null, no crash
+}
+
 function matchColumns(headers: string[]): Record<string, number> {
   const mapping: Record<string, number> = {};
   for (const [field, pattern] of Object.entries(COLUMN_PATTERNS)) {
@@ -146,6 +217,7 @@ async function handleParse(req: NextRequest) {
   const cleanProduits: ProduitParse[] = [];
   let fournisseurNomDetecte: string | null = null;
   let autoMapping: Record<string, number> = {};
+  let formulaAlertNeeded = false;
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -200,10 +272,15 @@ async function handleParse(req: NextRequest) {
 
       let consecutiveEmpty = 0;
       let loggedFirst = false;
+      let formulaInPrix = false;
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const nom = colMap.nom !== undefined ? String(row[colMap.nom] ?? '').trim() : '';
-        const prix = colMap.prix !== undefined ? safeNum(row[colMap.prix]) : 0;
+        const prixRaw = colMap.prix !== undefined ? row[colMap.prix] : 0;
+        const prix = safeNum(prixRaw);
+
+        // Track unresolved formulas in PA column (#6)
+        if (colMap.prix !== undefined && isFormula(prixRaw)) formulaInPrix = true;
 
         // Tolerate mid-table blank lines; stop after 3 consecutive
         if (!nom && !prix) {
@@ -214,29 +291,32 @@ async function handleParse(req: NextRequest) {
         consecutiveEmpty = 0;
 
         if (!loggedFirst) {
-          console.log('[mercuriale] Valeur brute index 14:', row[14], typeof row[14]);
-          const ean = colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '';
+          const ean = colMap.ean !== undefined ? normalizeEan(row[colMap.ean]) : null;
           const stock = colMap.stock !== undefined ? Math.max(0, Math.round(safeNum(row[colMap.stock]))) : 0;
           console.log('[mercuriale] Ligne 1 extraite:', JSON.stringify({nom, prix, ean, stock}));
           loggedFirst = true;
         }
 
         const tvaRaw = colMap.tva !== undefined ? safeNum(row[colMap.tva]) : NaN;
-        const ddmRaw = colMap.ddm !== undefined ? String(row[colMap.ddm] ?? '').trim() : '';
 
         cleanProduits.push({
           ref: colMap.ref !== undefined ? String(row[colMap.ref] ?? '').trim() || `REF-${cleanProduits.length + 1}` : `REF-${cleanProduits.length + 1}`,
           nom,
           marque: colMap.marque !== undefined ? String(row[colMap.marque] ?? '').trim() : '',
-          ean: colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '',
+          ean: colMap.ean !== undefined ? normalizeEan(row[colMap.ean]) ?? '' : '',
           prix_achat_ht: Math.max(0, prix),
           pcb: colMap.pcb !== undefined ? Math.max(1, Math.round(safeNum(row[colMap.pcb]) || 1)) : 1,
           stock: colMap.stock !== undefined ? Math.max(0, Math.round(safeNum(row[colMap.stock]))) : 0,
-          ddm: ddmRaw || null,
+          ddm: colMap.ddm !== undefined ? parseDdm(row[colMap.ddm]) : null,
           tva: [5.5, 20].includes(tvaRaw) ? tvaRaw : 5.5,
           poids: colMap.poids !== undefined ? safeNum(row[colMap.poids]) || null : null,
           pmc_fournisseur: colMap.pmc_ht !== undefined ? safeNum(row[colMap.pmc_ht]) || null : null,
         });
+      }
+
+      // #6: Alert if PA column contained formulas
+      if (formulaInPrix) {
+        formulaAlertNeeded = true;
       }
     }
   } catch (err) {
@@ -257,6 +337,7 @@ async function handleParse(req: NextRequest) {
   const validProduits = cleanProduits.filter(p => p.nom && p.nom.length > 2 && p.nom.length <= 80 && !/^\d+$/.test(p.nom));
 
   const alertes: string[] = [];
+  if (formulaAlertNeeded) alertes.push('Colonne PA contient des formules Excel non résolues — vérifiez que le fichier est exporté avec les valeurs calculées');
   if (validProduits.every(p => !p.ean)) alertes.push('Aucun code EAN détecté');
   if (validProduits.every(p => p.stock === 0)) alertes.push('Aucun stock détecté');
   if (validProduits.every(p => !p.ddm)) alertes.push('Aucune DDM/DLUO détectée');
@@ -340,7 +421,9 @@ async function handleImport(body: {
     .sort((a, b) => a.getTime() - b.getTime());
   const ddmMin = ddmDates.length > 0 ? ddmDates[0].toISOString().slice(0, 10) : null;
 
-  console.log('[mercuriale] Creating produits_offres with:', { source: fournisseur_nom, nb_references: produits.length, valeur_estimee: Math.round(valeurEstimee), ddm_min: ddmMin, assigned_to });
+  // #3: nb_references = valid products only (have nom AND prix_achat_ht)
+  const nbReferences = produits.filter(p => p.nom && p.prix_achat_ht > 0).length;
+  console.log('[mercuriale] Creating produits_offres with:', { source: fournisseur_nom, nb_references: nbReferences, valeur_estimee: Math.round(valeurEstimee), ddm_min: ddmMin, assigned_to });
 
   try {
     const { data: offreData, error: offreErr } = await supabase
@@ -348,7 +431,7 @@ async function handleImport(body: {
       .insert({
         source: fournisseur_nom,
         statut_traitement: 'nouvelle',
-        nb_references: produits.length,
+        nb_references: nbReferences,
         valeur_estimee: Math.round(valeurEstimee) || null,
         ddm_min: ddmMin,
         assigned_to: assigned_to || null,
@@ -395,11 +478,11 @@ async function handleImport(body: {
       .gte('created_at', offreCreatedAt);
   }
 
-  // 3. Build insert rows
+  // 3. Build insert rows (normalize EAN before storage)
   const rows = produits.map(p => ({
     nom: p.nom,
     marque: p.marque,
-    ean: p.ean || null,
+    ean: normalizeEan(p.ean),
     prix_achat_wag_ht: p.prix_achat_ht,
     stock_disponible: p.stock,
     conditionnement: p.pcb,
