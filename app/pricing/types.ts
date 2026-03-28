@@ -27,13 +27,12 @@ export interface Produit {
 export interface ScenarioResult {
   scenario: Scenario
   pmc: number | null
-  kdluo: number | null
   ratio: number | null
-  gap: number | null
   pv: number | null
-  multiplicateur: number | null
-  marge: number | null
   cible: number | null
+  prixRetail: number | null
+  margeWag: number | null
+  margeDiscounter: number | null
 }
 
 export interface GroupeFournisseur {

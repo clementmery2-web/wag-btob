@@ -14,10 +14,10 @@ const supabase = createBrowserClient(
 
 const SCENARIO_BADGE: Record<string, { label: string; bg: string; text: string }> = {
   A: { label: 'A — JACKPOT', bg: '#dcfce7', text: '#16a34a' },
-  B: { label: 'B — NORMAL', bg: '#dbeafe', text: '#2563eb' },
-  C: { label: 'Négo fournisseur', bg: '#fef3c7', text: '#d97706' },
+  B: { label: 'B — NORMAL', bg: '#dcfce7', text: '#16a34a' },
+  C: { label: 'C — NÉGO', bg: '#fef3c7', text: '#d97706' },
   D: { label: 'D — REFUS', bg: '#fee2e2', text: '#dc2626' },
-  PMC_REQUIS: { label: 'PMC requis', bg: '#fef3c7', text: '#d97706' },
+  PMC_REQUIS: { label: 'PMC requis', bg: '#f3f4f6', text: '#6b7280' },
 }
 
 const OWNERS = ['— Assigner', 'Chloé', 'Juliette', 'Solène', 'Clément', 'Jon', 'Marc', 'Eva', 'Autre']
@@ -75,18 +75,17 @@ function genererResumeInterne(
   produitsNego: Produit[],
   pmcEdits: Record<string, number | null>
 ): string {
-  const header = 'Produit               | PA HT  | PMC fourn. | Ratio  | Cible  | Gap    | DDM'
-  const sep = '-'.repeat(80)
+  const header = 'Produit               | PA HT  | PMC TTC    | Ratio  | Cible  | DDM'
+  const sep = '-'.repeat(75)
   const lignes = produitsNego.map(p => {
     const r = calculerScenarioResult(p, pmcEdits)
     const jours = calculerJoursDDM(p.dluo)
     const nom = p.nom.substring(0, 20).padEnd(20)
     const ratio = r.ratio != null ? r.ratio.toFixed(1) + '%' : '—'
-    const cible = r.cible != null && r.cible >= 0 ? r.cible.toFixed(2) + ' €' : '—'
-    const gap = r.gap != null ? r.gap.toFixed(1) + '%' : '—'
+    const cible = r.cible != null ? r.cible.toFixed(2) + ' €' : '—'
     const pmc = p.pmc_fournisseur != null ? p.pmc_fournisseur.toFixed(2) : '—'
     const ddm = jours != null ? jours + 'j' : '?'
-    return `${nom} | ${p.prix_achat_wag_ht.toFixed(2).padStart(6)} | ${pmc.padStart(10)} | ${ratio.padStart(6)} | ${cible.padStart(6)} | ${gap.padStart(6)} | ${ddm}`
+    return `${nom} | ${p.prix_achat_wag_ht.toFixed(2).padStart(6)} | ${pmc.padStart(10)} | ${ratio.padStart(6)} | ${cible.padStart(6)} | ${ddm}`
   }).join('\n')
   return `${header}\n${sep}\n${lignes}`
 }
@@ -545,8 +544,11 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
                             { label: 'STOCK' },
                             { label: 'PA WAG HT' },
                             { label: 'PMC FOURN.' },
-                            { label: 'PA/PMC', title: 'Ratio = PA WAG ÷ PMC × 100. A<30% | B 30-55% | C>55% négo | D>55%+gap>50% refus', cursor: 'help' },
-                            { label: 'PV B2B HT' },
+                            { label: 'RATIO', title: 'PA ÷ PMC TTC. A<33% | B<55% | C<70% négo | D≥70% refus', cursor: 'help' as const },
+                            { label: 'PV WAG HT' },
+                            { label: 'PRIX RETAIL' },
+                            { label: 'MARGE WAG' },
+                            { label: 'MARGE DISC.' },
                             { label: 'SCÉNARIO' },
                             { label: 'ACTION' },
                           ].map((h, i) => (
@@ -647,42 +649,48 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
                                   {produit.pmc_fournisseur != null && !savingPmc[produit.id] && !savedPmc[produit.id] && <span title="PMC fourni par le fournisseur" style={{ fontSize: '11px' }}>🔗</span>}
                                 </div>
                               </td>
-                              {/* PA/PMC */}
+                              {/* RATIO */}
                               <td style={{ padding: '10px 8px' }}>
                                 {r.ratio != null
-                                  ? <span title={`Ratio : ${r.ratio.toFixed(2)}%${r.gap != null ? ` · Gap : ${r.gap.toFixed(2)}%` : ''}`} style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, background: r.scenario === 'D' ? '#fca5a5' : badge.bg, color: r.scenario === 'D' ? '#7f1d1d' : badge.text }}>{r.ratio.toFixed(0)}%</span>
+                                  ? <span title={`Ratio PA/PMC : ${r.ratio.toFixed(1)}%`} style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600, background: r.ratio < 33 ? '#dcfce7' : r.ratio < 55 ? '#dbeafe' : r.ratio < 70 ? '#fef3c7' : '#fca5a5', color: r.ratio < 33 ? '#16a34a' : r.ratio < 55 ? '#2563eb' : r.ratio < 70 ? '#d97706' : '#7f1d1d' }}>{r.ratio.toFixed(0)}%</span>
                                   : <span style={{ color: '#9CA3AF', fontSize: '12px' }}>—</span>}
                               </td>
-                              {/* PV HT */}
+                              {/* PV WAG HT */}
                               <td style={{ padding: '10px 8px', fontSize: '13px' }}>
                                 {(r.scenario === 'A' || r.scenario === 'B')
                                   ? <span style={{ color: '#16a34a', fontWeight: 700 }}>{formaterPrixEuro(r.pv)}</span>
                                   : r.scenario === 'C'
-                                    ? r.cible != null && r.cible < 0
-                                      ? <span style={{ fontSize: '11px', color: '#9ca3af' }}>N/A — PA &gt; PMC</span>
-                                      : <span style={{ color: '#d97706', fontStyle: 'italic' }}>~{formaterPrixEuro(r.cible)}</span>
+                                    ? <span style={{ color: '#d97706', fontStyle: 'italic' }}>~{formaterPrixEuro(r.cible)}</span>
                                     : <span style={{ color: '#9CA3AF' }}>—</span>}
+                              </td>
+                              {/* PRIX RETAIL */}
+                              <td style={{ padding: '10px 8px', fontSize: '12px' }}>
+                                {r.prixRetail != null
+                                  ? <div>{formaterPrixEuro(r.prixRetail)}<div style={{ fontSize: '10px', color: '#9CA3AF' }}>PMC ×70%</div></div>
+                                  : <span style={{ color: '#9CA3AF' }}>—</span>}
+                              </td>
+                              {/* MARGE WAG */}
+                              <td style={{ padding: '10px 8px', fontSize: '12px', fontWeight: 600, color: r.margeWag != null ? (r.margeWag >= 25 ? '#16a34a' : r.margeWag >= 10 ? '#d97706' : '#dc2626') : '#9CA3AF' }}>
+                                {r.margeWag != null ? `+${r.margeWag.toFixed(1)}%` : '—'}
+                              </td>
+                              {/* MARGE DISC. */}
+                              <td style={{ padding: '10px 8px', fontSize: '12px', color: '#9CA3AF' }}>
+                                {r.margeDiscounter != null ? `+${r.margeDiscounter.toFixed(1)}%` : '—'}
                               </td>
                               {/* SCÉNARIO */}
                               <td style={{ padding: '10px 8px' }}>
-                                {r.scenario !== 'D' && (
-                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: badge.bg, color: badge.text, fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{badge.label}</span>
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: badge.bg, color: badge.text, fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{badge.label}</span>
+                                {r.scenario === 'A' && r.pv != null && (
+                                  <div style={{ fontSize: '11px', color: '#374151' }}>×{(r.pv / produit.prix_achat_wag_ht).toFixed(1)}</div>
                                 )}
-                                {(r.scenario === 'A' || r.scenario === 'B') && (
-                                  <div style={{ fontSize: '12px', color: '#374151' }}>PA × {r.multiplicateur!.toFixed(2)} → {r.pv!.toFixed(2)} € +{r.marge!.toFixed(1)}%</div>
+                                {r.scenario === 'B' && (
+                                  <div style={{ fontSize: '11px', color: '#374151' }}>+25% marge</div>
                                 )}
                                 {r.scenario === 'C' && (
-                                  <div style={{ fontSize: '12px', color: '#374151' }}>
-                                    {r.cible != null && r.cible < 0
-                                      ? <span style={{ color: '#9ca3af' }}>N/A — PA &gt; PMC</span>
-                                      : `Cible : ${r.cible != null ? r.cible.toFixed(2) : '—'} €`}
-                                  </div>
+                                  <div style={{ fontSize: '11px', color: '#374151' }}>Cible : {r.cible != null ? r.cible.toFixed(2) : '—'} €</div>
                                 )}
                                 {r.scenario === 'D' && (
-                                  <>
-                                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '9999px', background: '#fca5a5', color: '#7f1d1d', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>D — REFUS</span>
-                                    <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 500 }}>PA &gt; PMC · gap &gt;50%</div>
-                                  </>
+                                  <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 500 }}>ratio ≥70%</div>
                                 )}
                               </td>
                               {/* ACTION */}

@@ -133,11 +133,11 @@ export function getPriorite(score: number): 'rouge' | 'orange' | 'vert' {
   return 'vert';
 }
 
-export function calculerScenario(prixAchat: number, pmcHt: number): 'A' | 'B' | 'C' | 'D' {
-  const ratio = prixAchat / pmcHt;
-  if (ratio < 0.20) return 'A';
-  if (ratio < 0.43) return 'B';
-  if (ratio < 0.50) return 'C';
+export function calculerScenario(prixAchat: number, pmcTtc: number): 'A' | 'B' | 'C' | 'D' {
+  const ratio = prixAchat / pmcTtc;
+  if (ratio < 0.33) return 'A';
+  if (ratio < 0.55) return 'B';
+  if (ratio < 0.70) return 'C';
   return 'D';
 }
 
