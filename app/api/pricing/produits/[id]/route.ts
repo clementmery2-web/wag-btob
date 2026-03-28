@@ -30,6 +30,38 @@ export async function PATCH(
       .eq('id', id);
 
     if (!error) {
+      // If a statut decision was saved, check if ALL products of the same offre are decided
+      if ('statut' in body) {
+        try {
+          // Get this product's offre_id
+          const { data: produit } = await supabaseAdmin
+            .from('produits')
+            .select('offre_id')
+            .eq('id', id)
+            .single();
+
+          if (produit?.offre_id) {
+            // Count products still awaiting decision
+            const { count } = await supabaseAdmin
+              .from('produits')
+              .select('*', { count: 'exact', head: true })
+              .eq('offre_id', produit.offre_id)
+              .in('statut', ['en_attente', 'a_traiter']);
+
+            // If none remaining → mark offre as traitee
+            if (count === 0) {
+              await supabaseAdmin
+                .from('produits_offres')
+                .update({ statut_traitement: 'traitee', updated_at: new Date().toISOString() })
+                .eq('id', produit.offre_id);
+            }
+          }
+        } catch (e) {
+          console.error('[produits PATCH] offre statut check failed:', e);
+          // Non-blocking — the product update already succeeded
+        }
+      }
+
       return NextResponse.json({ success: true });
     }
   }
