@@ -195,7 +195,7 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
   // ─── Handlers ───────────────────────────────────────────────
 
   const toggleCollapsed = (nom: string) => {
-    setCollapsed(prev => ({ ...prev, [nom]: !(prev[nom] ?? false) }))
+    setCollapsed(prev => ({ ...prev, [nom]: !(prev[nom] ?? true) }))
   }
 
   const handleCopy = async (text: string, feedbackId: string) => {
@@ -415,7 +415,7 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
 
         {(() => {
           const bloqués = produits.filter(p =>
-            calculerScenarioResult(p, pmcEdits).scenario === 'PMC_REQUIS'
+            p.pmc_fournisseur == null || p.pmc_fournisseur <= 0
           )
           const nb = bloqués.length
           if (nb === 0) return null
@@ -466,7 +466,7 @@ export default function PricingClient({ initialProduits, assigneParFournisseur =
         })()}
 
         {groupes.map(groupe => {
-          const isCollapsed = collapsed[groupe.nom] ?? false
+          const isCollapsed = collapsed[groupe.nom] ?? true
           const resultsGroupe = groupe.produits.map(p => ({ produit: p, r: calculerScenarioResult(p, pmcEdits) }))
           const nbPrets = resultsGroupe.filter(({ r }) => r.scenario === 'A' || r.scenario === 'B').length
           const nbPmcManquant = resultsGroupe.filter(({ r }) => r.scenario === 'PMC_REQUIS').length
