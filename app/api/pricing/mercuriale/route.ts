@@ -20,20 +20,23 @@ interface ProduitParse {
 // Map Excel column headers to known fields via keyword matching
 const COLUMN_PATTERNS: Record<string, RegExp> = {
   ref: /r[ée]f|code.?art|sku|reference/i,
-  nom: /nom|d[ée]sign|libell[ée]|produit|article/i,
+  nom: /nom|d[ée]sign(?:ation)?|libell[ée]|produit|article/i,
   marque: /marque|brand|fabricant/i,
   ean: /ean|gtin|code.?bar/i,
   pcb: /pcb|colis|colisage|lot|uvs/i,
-  stock: /stock|qt[ée]|quantit[ée]|dispo/i,
+  stock: /stock|qt[ée]|quantit[ée]|dispo|uc[\s/]*box|total\s*uc|uc\s*disponible/i,
   ddm: /ddm|dluo|dlc|date.*limite|expir|perem/i,
-  poids: /poids|kg|gramm|weight|net/i,
+  poids: /poids|kg|gramm|weight|net\s*(?:g|kg|poids)/i,
   tva: /tva|taxe/i,
   pmc_ht: /pmc|prix\s*moyen\s*constat[ée]|mktg\s*conseill|prix\s*conseill/i,
 };
 
 // prix_achat_wag_ht patterns in priority order (first match wins)
+// "PA B2B SANS ECO" is a computed price, not the raw PA → excluded via PRIX_EXCLUDE
+const PRIX_EXCLUDE = /b2b\s*sans\s*eco|eco[\s-]*emb/i;
 const PRIX_PATTERNS: RegExp[] = [
   /prix\s*anti[\s-]*gaspi/i,
+  /prix\s*net\s*factur[ée]?\s*uc|net\s*factur[ée]?\s*uc/i,
   /prix\s*net\s*factur|net\s*factur/i,
   /prix\s*achat|pa[\s.]?ht|achat[\s.]?ht/i,
   /prix|tarif|cost|p\.?u/i,
@@ -81,11 +84,11 @@ function matchColumns(headers: string[]): Record<string, number> {
     const idx = headers.findIndex(h => pattern.test(h));
     if (idx !== -1) mapping[field] = idx;
   }
-  // Match prix with priority: antigaspi > prix achat/pa ht > prix generic
-  // Exclude columns already mapped (e.g. pmc_ht) to avoid false matches
+  // Match prix with priority: antigaspi > prix net facturé UC > prix achat > generic
+  // Exclude columns already mapped (e.g. pmc_ht) and computed prices (PA B2B SANS ECO)
   const usedIndices = new Set(Object.values(mapping));
   for (const pattern of PRIX_PATTERNS) {
-    const idx = headers.findIndex((h, i) => !usedIndices.has(i) && pattern.test(h));
+    const idx = headers.findIndex((h, i) => !usedIndices.has(i) && !PRIX_EXCLUDE.test(h) && pattern.test(h));
     if (idx !== -1) {
       mapping.prix = idx;
       break;
@@ -175,24 +178,39 @@ async function handleParse(req: NextRequest) {
         fournisseurNomDetecte = sheetName;
       }
 
-      totalRows += Math.max(0, rows.length - headerIdx - 1);
-      const dataRows = rows.slice(headerIdx + 1);
+      // Skip blank lines between header and first data row
+      let dataStart = headerIdx + 1;
+      while (dataStart < rows.length) {
+        const r = rows[dataStart];
+        if (Array.isArray(r) && r.some(c => c != null && c !== '')) break;
+        dataStart++;
+      }
 
+      const dataRows = rows.slice(dataStart);
+      totalRows += dataRows.length;
+      console.log('[mercuriale] Données à partir de la ligne', dataStart, '(', dataRows.length, 'lignes)');
+
+      let consecutiveEmpty = 0;
+      let loggedFirst = false;
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const nom = colMap.nom !== undefined ? String(row[colMap.nom] ?? '').trim() : '';
-        if (i === 0) {
-          console.log('[mercuriale] Valeur brute index 14:', row[14], typeof row[14]);
-        }
         const prix = colMap.prix !== undefined ? safeNum(row[colMap.prix]) : 0;
 
-        // Skip empty rows
-        if (!nom && !prix) continue;
+        // Tolerate mid-table blank lines; stop after 3 consecutive
+        if (!nom && !prix) {
+          consecutiveEmpty++;
+          if (consecutiveEmpty >= 3) break;
+          continue;
+        }
+        consecutiveEmpty = 0;
 
-        if (i === 0) {
+        if (!loggedFirst) {
+          console.log('[mercuriale] Valeur brute index 14:', row[14], typeof row[14]);
           const ean = colMap.ean !== undefined ? String(row[colMap.ean] ?? '').trim() : '';
           const stock = colMap.stock !== undefined ? Math.max(0, Math.round(safeNum(row[colMap.stock]))) : 0;
           console.log('[mercuriale] Ligne 1 extraite:', JSON.stringify({nom, prix, ean, stock}));
+          loggedFirst = true;
         }
 
         const tvaRaw = colMap.tva !== undefined ? safeNum(row[colMap.tva]) : NaN;
