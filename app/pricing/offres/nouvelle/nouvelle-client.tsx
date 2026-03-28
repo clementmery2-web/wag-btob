@@ -64,6 +64,7 @@ export function NouvelleOffreClient() {
   // Editing state
   const [editCell, setEditCell] = useState<{ row: number; col: keyof ProduitParse } | null>(null);
   const [nomFichierAffiche, setNomFichierAffiche] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   // ── SessionStorage persistence ──
   const WIZARD_KEY = 'wag_wizard_state';
@@ -220,6 +221,8 @@ export function NouvelleOffreClient() {
 
   // ── ÉTAPE 3: Import into Supabase ──
   const handleImport = useCallback(async () => {
+    if (isImporting) return; // prevent double-click
+    setIsImporting(true);
     setErreur('');
     setLoading(true);
     setEtape('import');
@@ -252,8 +255,9 @@ export function NouvelleOffreClient() {
       setEtape('preview');
     } finally {
       setLoading(false);
+      setIsImporting(false);
     }
-  }, [fournisseur, emailFournisseur, flux, produits, fichier]);
+  }, [fournisseur, emailFournisseur, flux, produits, fichier, isImporting]);
 
   // ── Inline edit handlers ──
   function updateProduit(index: number, col: keyof ProduitParse, value: string) {
@@ -690,9 +694,9 @@ export function NouvelleOffreClient() {
                 ← Recommencer
               </button>
               <div style={{ textAlign: 'right' }}>
-                <button onClick={handleImport} disabled={produits.length === 0}
-                  style={{ background: produits.length === 0 ? '#e5e7eb' : '#533AB7', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: 14, fontWeight: 500, cursor: produits.length === 0 ? 'not-allowed' : 'pointer' }}>
-                  Importer {produits.length} produit{produits.length > 1 ? 's' : ''} →
+                <button onClick={handleImport} disabled={produits.length === 0 || isImporting}
+                  style={{ background: produits.length === 0 || isImporting ? '#e5e7eb' : '#533AB7', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: 14, fontWeight: 500, cursor: produits.length === 0 || isImporting ? 'not-allowed' : 'pointer', opacity: isImporting ? 0.6 : 1 }}>
+                  {isImporting ? 'Import en cours...' : `Importer ${produits.length} produit${produits.length > 1 ? 's' : ''} →`}
                 </button>
                 {nbAnomalies > 0 && <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #6b7280)', marginTop: 4 }}>{nbAnomalies} anomalie{nbAnomalies > 1 ? 's' : ''} · import possible</div>}
               </div>

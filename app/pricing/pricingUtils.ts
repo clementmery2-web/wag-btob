@@ -72,19 +72,22 @@ export function calculerScenarioResult(
   const gap = Math.round((pa - pmcHt * 0.48) / pa * 100 * 10) / 10
 
   if (ratioRaw < 0.20) {
-    const pv = Math.round(pmcHt * kdluo * 0.40 * 100) / 100
+    let pv = Math.round(pmcHt * kdluo * 0.40 * 100) / 100
+    pv = Math.max(pv, Math.round(pa * 1.01 * 100) / 100) // PV never below PA
     const multiplicateur = Math.round((pv / pa) * 100) / 100
     const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
     return { scenario: 'A', pmc: pmcHt, kdluo, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
   if (ratioRaw < 0.43) {
-    const pv = Math.round(pmcHt * kdluo * 0.48 * 100) / 100
+    let pv = Math.round(pmcHt * kdluo * 0.48 * 100) / 100
+    pv = Math.max(pv, Math.round(pa * 1.01 * 100) / 100) // PV never below PA
     const multiplicateur = Math.round((pv / pa) * 100) / 100
     const marge = Math.round(((pv - pa) / pv * 100) * 10) / 10
     return { scenario: 'B', pmc: pmcHt, kdluo, ratio, gap, pv, multiplicateur, marge, cible: null }
   }
   if (ratioRaw < 0.50) {
-    const cible = Math.round(pmcHt * kdluo * (0.48 / 1.15) * 100) / 100
+    let cible = Math.round(pmcHt * kdluo * (0.48 / 1.15) * 100) / 100
+    cible = Math.max(cible, Math.round(pa * 1.01 * 100) / 100) // cible never below PA
     return { scenario: 'C', pmc: pmcHt, kdluo, ratio, gap, pv: null, multiplicateur: null, marge: null, cible }
   }
   return { scenario: 'D', pmc: pmcHt, kdluo, ratio, gap, pv: null, multiplicateur: null, marge: null, cible: null }

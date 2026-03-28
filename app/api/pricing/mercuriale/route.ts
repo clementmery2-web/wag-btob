@@ -97,8 +97,12 @@ function isFormula(cell: unknown): boolean {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeEan(v: any): string | null {
-  if (!v) return null;
-  const s = String(v).replace(/\s/g, '').replace(/\.0+$/, '').trim();
+  if (v == null || v === '') return null;
+  // Handle float numbers (e.g. 4062300032842.0 → '4062300032842')
+  const s = (typeof v === 'number' ? Math.round(v).toString() : String(v))
+    .replace(/\s/g, '')
+    .replace(/\.0+$/, '')
+    .trim();
   return /^\d{8,14}$/.test(s) ? s : null;
 }
 
@@ -575,6 +579,14 @@ async function handleImport(body: {
   }
 
   console.log('[mercuriale] Insérés:', insertedIds.length, 'produits');
+
+  // Update offre statut to 'en_cours' after successful import
+  if (offreId && insertedIds.length > 0) {
+    await supabase
+      .from('produits_offres')
+      .update({ statut_traitement: 'en_cours' })
+      .eq('id', offreId);
+  }
 
   // Create notification
   try {
