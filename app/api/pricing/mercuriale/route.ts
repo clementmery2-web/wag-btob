@@ -167,6 +167,8 @@ async function handleParse(req: NextRequest) {
       const headers = (rows[headerIdx] as unknown[]).map(c => String(c ?? '').trim());
       if (colonnes.length === 0) colonnes = headers;
 
+      console.log('[mercuriale] noms colonnes bruts:', colonnes.map(c => JSON.stringify(c)));
+
       const autoMap = matchColumns(headers);
       if (Object.keys(autoMapping).length === 0) autoMapping = autoMap;
       const colMap = userMapping || autoMap;
